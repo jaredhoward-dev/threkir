@@ -12,8 +12,8 @@
 
 import type { PreferredUnit } from '../types';
 import { currentLocale } from '../i18n/store.svelte';
-import { formatDecimal } from './number';
-import { paceMinutesSeconds, isMeaningfulPace, paceToleranceLabel } from './pace_format';
+import { paceToleranceLabel } from './pace_format';
+import { distanceIn, fmtKmIn, fmtPaceIn, formatPaceIn, formatPaceNoSuffixIn, formatSpeedIn } from './unit_pace';
 import { formatCompactDistance, formatShortDistance } from './short_distance';
 import { formatElevationIn, formatStrideLengthIn } from './elevation';
 import {
@@ -24,8 +24,6 @@ import {
 	kgToDisplay,
 	roundWeight,
 } from './weight';
-
-const METRES_PER_MILE = 1609.344;
 
 // `$state.raw` so non-Svelte callers (pure functions, SSR) can still
 // read the value; rune-aware callers still get reactivity.
@@ -93,27 +91,20 @@ export function formatDistance(metres: number): string {
 /// Pace label: "m:ss" with the appropriate per-unit suffix baked in
 /// ("/km" or "/mi") so templates don't have to append it separately.
 export function formatPace(seconds: number, metres: number): string {
-	if (!isMeaningfulPace(seconds, metres)) return '--:--';
-	const perKm = seconds / (metres / 1000);
-	const perUnit = unit.value === 'mi' ? perKm * (METRES_PER_MILE / 1000) : perKm;
-	return `${paceMinutesSeconds(perUnit)} /${unit.value}`;
+	return formatPaceIn(seconds, metres, unit.value);
 }
 
 /// Variant for callers that want just the pace digits without a suffix
 /// (sparklines, axis ticks). Renders the same per-unit value.
 export function formatPaceNoSuffix(seconds: number, metres: number): string {
-	if (!isMeaningfulPace(seconds, metres)) return '--:--';
-	const perKm = seconds / (metres / 1000);
-	const perUnit = unit.value === 'mi' ? perKm * (METRES_PER_MILE / 1000) : perKm;
-	return paceMinutesSeconds(perUnit);
+	return formatPaceNoSuffixIn(seconds, metres, unit.value);
 }
 
 /// Convert a metre count into the user's preferred display unit
 /// (for custom rendering — charts, goal fills, etc). Returns a
 /// `{ value, unit }` tuple so callers can format how they like.
 export function distanceInPreferred(metres: number): { value: number; unit: 'km' | 'mi' } {
-	if (unit.value === 'mi') return { value: metres / METRES_PER_MILE, unit: 'mi' };
-	return { value: metres / 1000, unit: 'km' };
+	return distanceIn(metres, unit.value);
 }
 
 /// Average speed label paired with the user's preferred-unit suffix
@@ -123,25 +114,14 @@ export function distanceInPreferred(metres: number): { value: number; unit: 'km'
 /// guarantees the cell is non-empty (no metadata or settings
 /// required beyond what every run already carries).
 export function formatSpeed(seconds: number, metres: number): string {
-	if (!isMeaningfulPace(seconds, metres)) return '--';
-	const loc = currentLocale();
-	const mPerSec = metres / seconds;
-	if (unit.value === 'mi') {
-		const mph = mPerSec * 2.23694;
-		return `${formatDecimal(mph, 1, loc)} mph`;
-	}
-	const kmh = mPerSec * 3.6;
-	return `${formatDecimal(kmh, 1, loc)} km/h`;
+	return formatSpeedIn(seconds, metres, unit.value, currentLocale());
 }
 
 /// Compact distance — `XX.X km` / `XX.X mi`. Used by training plan
 /// surfaces (week grid, calendar, today card) where we want a fixed
 /// digit count rather than the more flexible `formatDistance`.
 export function fmtKm(metres: number | null | undefined, digits = 1): string {
-	if (metres == null) return '—';
-	const loc = currentLocale();
-	if (unit.value === 'mi') return `${formatDecimal(metres / METRES_PER_MILE, digits, loc)} mi`;
-	return `${formatDecimal(metres / 1000, digits, loc)} km`;
+	return fmtKmIn(metres, unit.value, currentLocale(), digits);
 }
 
 /// A distance for a narrow grid cell: "15 km", "6.4 mi" (`formatCompactDistance`).
@@ -168,9 +148,7 @@ export function formatStrideLength(metres: number | null | undefined): string {
 /// canonical unit stored on `plan_workouts`); we convert to /mi when
 /// the user prefers miles.
 export function fmtPace(secPerKm: number | null | undefined): string {
-	if (secPerKm == null || !Number.isFinite(secPerKm) || secPerKm <= 0) return '—';
-	const sec = unit.value === 'mi' ? secPerKm * (METRES_PER_MILE / 1000) : secPerKm;
-	return `${paceMinutesSeconds(sec)}/${unit.value}`;
+	return fmtPaceIn(secPerKm, unit.value);
 }
 
 /// Plan-surface pace tolerance, in the same unit `fmtPace` shows the pace in.
