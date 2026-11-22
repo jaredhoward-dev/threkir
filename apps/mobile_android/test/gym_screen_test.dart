@@ -776,7 +776,7 @@ void main() {
         await _pumpUntil(
             tester, () => tester.any(find.text("1 change hasn't synced")),
             describe: 'the rejected sync to surface the unsynced-count banner');
-        expect(find.text('Retry'), findsOneWidget);
+        expect(find.byTooltip('Retry'), findsOneWidget);
         expect(store.hasPending, isTrue);
         // Let the in-flight refresh drain before tearing the temp dir down.
         await pumpUntilStoreWritesSettle(tester);

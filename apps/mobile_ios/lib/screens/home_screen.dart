@@ -1021,6 +1021,7 @@ class _HomeScreenState extends State<HomeScreen>
           onSyncRuns: widget.syncService == null
               ? null
               : () => widget.syncService!.triggerSync('manual'),
+          runsSyncing: widget.syncService?.syncing,
         ),
       ),
       _LazyKeepAliveTab(

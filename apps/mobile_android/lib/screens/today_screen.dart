@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:api_client/api_client.dart';
 import 'package:core_models/core_models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:ui_kit/ui_kit.dart'
@@ -128,6 +129,10 @@ class TodayScreen extends StatefulWidget {
   /// screen pushing runs itself. Null leaves runs counted but not retried.
   final Future<void> Function()? onSyncRuns;
 
+  /// True while `SyncService` is pushing, so the banner says "Syncing…"
+  /// instead of reporting a failure for a run that is still uploading.
+  final ValueListenable<bool>? runsSyncing;
+
   /// Reads whether the Coach is live on this deploy. Defaults to
   /// [fetchProPerks], the manifest the Messages inbox's Coach row reads.
   final Future<ProPerks> Function()? loadPerks;
@@ -147,6 +152,7 @@ class TodayScreen extends StatefulWidget {
     this.onStartWorkout,
     this.social,
     this.onSyncRuns,
+    this.runsSyncing,
     this.loadPerks,
   });
 
@@ -1197,6 +1203,8 @@ class _TodayScreenState extends State<TodayScreen>
       stores: [widget.gymStore, widget.foodStore],
       runStore: widget.runStore,
       onRetryRuns: widget.onSyncRuns,
+      runsSyncing: widget.runsSyncing,
+      margin: const EdgeInsets.only(bottom: AppInsets.sectionGap),
     );
 
     // Web's `isNewAccount`: no runs all-time AND no gym sessions. A goal is
@@ -1221,7 +1229,6 @@ class _TodayScreenState extends State<TodayScreen>
         padding: pagePadding,
         children: [
           pendingBanner,
-          const SizedBox(height: 8),
           SkeletonBlock(height: 120, label: l10n.commonLoading),
           const SizedBox(height: 12),
           const SkeletonBlock(height: 96),

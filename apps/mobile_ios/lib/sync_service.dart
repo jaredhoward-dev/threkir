@@ -17,10 +17,11 @@ import 'watch_ingest_queue.dart';
 /// 1. Connectivity changes from offline to online (e.g. wifi reconnects)
 /// 2. The app comes back to the foreground
 /// 3. The user is signed in and there are unsynced runs
+/// 4. A run is saved or edited on this device (an added past run, an import)
 ///
-/// Sync attempts are silent and best-effort — failures are logged but don't
-/// surface to the UI. The user can still trigger an explicit sync from the
-/// Runs screen.
+/// Sync attempts are best-effort. [syncing] is true while a cycle is pushing,
+/// so a pending-changes banner can say "Syncing…" instead of reporting a
+/// failure for a run whose upload is still in flight.
 ///
 /// After a failure the service enters an exponential backoff window (60 s,
 /// 2 min, 4 min, … capped at 30 min) so a flaky upstream doesn't see N×
@@ -30,21 +31,25 @@ import 'watch_ingest_queue.dart';
 class SyncService with WidgetsBindingObserver {
   final ApiClient? apiClient;
   final LocalRunStore runStore;
+
   /// Optional — when provided, the sync cycle also drains unsynced
   /// routes (created offline / while signed out via the in-app route
   /// builder). When null, route drain is a no-op so older callers
   /// that don't wire a route store don't blow up.
   final LocalRouteStore? routeStore;
+
   /// Optional — when provided, a successful run push fires an opportunistic
   /// challenge-completion recompute for the just-synced runs (the offline-first
   /// mobile analogue of web's on-save fan-out). When null, the daily cron sweep
   /// remains the only completion path.
   final SocialService? socialService;
+
   /// Optional — when provided, every cycle that gets past the auth and
   /// backoff gates also drains the Apple Watch ingest queue, so a watch run
   /// whose upload failed offline is retried when connectivity returns rather
   /// than on the next sign-in (decisions § 1801).
   final WatchIngestQueue? watchQueue;
+
   /// Optional — when provided, the first cycle with a session reconciles the
   /// local stores against the caller's owned rows, once per account
   /// (decisions § 1938). Runs before the drains so a foreign row's refused
@@ -71,7 +76,21 @@ class SyncService with WidgetsBindingObserver {
   ///   signed-out cycle is still ticking — and their freshly-recorded
   ///   offline run sits unsynced until the user backgrounds + foregrounds
   ///   the app or manually taps "Sync all".
-  static const _backoffBypassReasons = <String>{'manual', 'signin'};
+  ///
+  /// - `local-save` — the runner just saved or edited a run on this device.
+  ///   One cycle per deliberate save is cheap, and without it an added past
+  ///   run waited out the backoff window under a "hasn't synced" banner.
+  static const _backoffBypassReasons = <String>{
+    'manual',
+    'signin',
+    'local-save',
+  };
+
+  /// True while a cycle is doing work. Listenable so the pending-changes
+  /// banner can tell an upload in flight from one that failed.
+  final ValueNotifier<bool> syncing = ValueNotifier(false);
+
+  int _localQueue = 0;
 
   SyncService({
     required this.apiClient,
@@ -84,8 +103,25 @@ class SyncService with WidgetsBindingObserver {
 
   void start() {
     WidgetsBinding.instance.addObserver(this);
-    _connectivitySub = Connectivity().onConnectivityChanged.listen(_onConnectivity);
+    _connectivitySub = Connectivity().onConnectivityChanged.listen(
+      _onConnectivity,
+    );
+    _localQueue = _localQueueSize();
+    runStore.addListener(_onRunStoreChanged);
     _fireSync('startup');
+  }
+
+  int _localQueueSize() =>
+      runStore.unsyncedCount + runStore.pendingEditIds.length;
+
+  /// Pushes a run the moment it lands in the queue. Only growth triggers a
+  /// cycle: the cycle's own `markManySynced` shrinks the queue and notifies
+  /// too, and must not start another one.
+  void _onRunStoreChanged() {
+    final size = _localQueueSize();
+    final grew = size > _localQueue;
+    _localQueue = size;
+    if (grew) _fireSync('local-save');
   }
 
   /// The cycle a fire-and-forget trigger started, until it finishes.
@@ -119,6 +155,7 @@ class SyncService with WidgetsBindingObserver {
 
   void stop() {
     WidgetsBinding.instance.removeObserver(this);
+    runStore.removeListener(_onRunStoreChanged);
     _connectivitySub?.cancel();
   }
 
@@ -130,10 +167,12 @@ class SyncService with WidgetsBindingObserver {
   }
 
   Future<void> _onConnectivity(List<ConnectivityResult> results) async {
-    final online = results.any((r) =>
-        r == ConnectivityResult.wifi ||
-        r == ConnectivityResult.mobile ||
-        r == ConnectivityResult.ethernet);
+    final online = results.any(
+      (r) =>
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.ethernet,
+    );
     if (online) await _trySync('connectivity');
   }
 
@@ -158,12 +197,12 @@ class SyncService with WidgetsBindingObserver {
 
   /// Test-only: read the current backoff state for assertions.
   @visibleForTesting
-  ({int failures, DateTime? lastFailureAt, Duration backoff}) debugBackoffState() =>
-      (
-        failures: _consecutiveFailures,
-        lastFailureAt: _lastFailureAt,
-        backoff: _currentBackoff(),
-      );
+  ({int failures, DateTime? lastFailureAt, Duration backoff})
+  debugBackoffState() => (
+    failures: _consecutiveFailures,
+    lastFailureAt: _lastFailureAt,
+    backoff: _currentBackoff(),
+  );
 
   /// Test-only: zero the backoff window without touching anything else.
   @visibleForTesting
@@ -180,9 +219,7 @@ class SyncService with WidgetsBindingObserver {
     // ceiling keeps the math obvious.
     final cappedShift = shift.clamp(0, 20);
     final secs = _baseBackoff.inSeconds * (1 << cappedShift);
-    return Duration(
-      seconds: secs.clamp(0, _maxBackoff.inSeconds).toInt(),
-    );
+    return Duration(seconds: secs.clamp(0, _maxBackoff.inSeconds).toInt());
   }
 
   bool _isInBackoff() {
@@ -213,6 +250,15 @@ class SyncService with WidgetsBindingObserver {
     }
     final api = apiClient;
     if (api == null || api.userId == null) return;
+    syncing.value = true;
+    try {
+      await _runCycle(api, reason);
+    } finally {
+      syncing.value = false;
+    }
+  }
+
+  Future<void> _runCycle(ApiClient api, String reason) async {
     // Unawaited and outside `_syncing`: the queue serialises its own drains,
     // and a stalled watch upload must not hold the run-store cycle behind it.
     final queue = watchQueue;
@@ -271,14 +317,14 @@ class SyncService with WidgetsBindingObserver {
         .toList();
     final unsyncedRoutes = routeStore?.unsyncedRoutes ?? const [];
     final hasPendingRouteDeletes =
-        routeStore?.pendingRemoteDeletesForUser(api.userId).isNotEmpty ??
-            false;
+        routeStore?.pendingRemoteDeletesForUser(api.userId).isNotEmpty ?? false;
     final hasPendingEdits = runStore.pendingEditIds.isNotEmpty;
     if (unsynced.isEmpty &&
         !hasPendingEdits &&
         !hasPendingDeletes &&
         unsyncedRoutes.isEmpty &&
-        !hasPendingRouteDeletes) return;
+        !hasPendingRouteDeletes)
+      return;
 
     _syncing = true;
     var anyFailure = false;
@@ -300,8 +346,9 @@ class SyncService with WidgetsBindingObserver {
             await runStore.markBlocked(outcome.blocked);
           }
           final failed = outcome.failedIds;
-          final succeeded =
-              unsynced.where((r) => !failed.contains(r.id)).toList();
+          final succeeded = unsynced
+              .where((r) => !failed.contains(r.id))
+              .toList();
           await runStore.markManySynced(succeeded);
           debugPrint(
             'SyncService: pushed ${unsynced.length - failed.length} '
@@ -312,8 +359,9 @@ class SyncService with WidgetsBindingObserver {
           // retry for it would be the same forever-loop one layer up.
           if (outcome.retryable.isNotEmpty) anyFailure = true;
           if (succeeded.isNotEmpty) {
-            await socialService
-                ?.recomputeChallengesForRuns(succeeded.map((r) => r.startedAt));
+            await socialService?.recomputeChallengesForRuns(
+              succeeded.map((r) => r.startedAt),
+            );
           }
         } catch (e) {
           debugPrint('SyncService: batch push failed ($reason): $e');
@@ -346,7 +394,6 @@ class SyncService with WidgetsBindingObserver {
       }
     }
   }
-
 }
 
 /// Retry remote-side deletes that failed on first attempt (e.g. the
@@ -404,8 +451,9 @@ Future<bool> pushPendingRunEdits(
   String reason = 'background',
 }) async {
   final deleting = runStore.pendingRemoteDeletesForUser(api.userId);
-  final ids =
-      runStore.pendingEditIds.where((id) => !deleting.contains(id)).toList();
+  final ids = runStore.pendingEditIds
+      .where((id) => !deleting.contains(id))
+      .toList();
   if (ids.isEmpty) return true;
   debugPrint('Sync: pushing ${ids.length} pending run edits ($reason)');
   var settled = true;
@@ -527,9 +575,7 @@ Future<bool> drainUnsyncedRoutes(
       await routeStore.tagRoutesOwner(succeededIds, uid);
     }
   }
-  debugPrint(
-    'Sync: drained $ok / ${unsyncedRoutes.length} unsynced routes',
-  );
+  debugPrint('Sync: drained $ok / ${unsyncedRoutes.length} unsynced routes');
   return failed == 0;
 }
 
@@ -572,7 +618,9 @@ Future<bool> drainPendingRouteDeletes(
     } on RouteDeleteRefusedException {
       // The server refuses this session's delete outright, so a retry can
       // never succeed: drop it from the queue and keep the local copy.
-      debugPrint('Sync: route delete refused for $id; dropping it from the queue');
+      debugPrint(
+        'Sync: route delete refused for $id; dropping it from the queue',
+      );
       await routeStore.clearPendingRemoteDelete(id);
       failed++;
     } catch (e) {

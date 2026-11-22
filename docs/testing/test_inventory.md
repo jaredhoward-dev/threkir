@@ -348,7 +348,7 @@ Three scenarios: the happy-path full pipeline (GPS feed → recorder → store �
 
 Stops short of driving the full `RunScreen` UI, which would need additional mocks for Pedometer / WakelockPlus / flutter_tts / flutter_local_notifications. The data pipeline is the regression target — UI mocking is documented as a follow-up below.
 
-### `apps/mobile_android/test/sync_service_test.dart` — 61 tests
+### `apps/mobile_android/test/sync_service_test.dart` — 65 tests
 
 Covers the `_trySync` loop on `SyncService` via the new `@visibleForTesting debugTrySync` hook. A `_FakeApiClient` subclasses `ApiClient` and overrides `userId`, `saveRunsBatch`, and `deleteRunById`; `LocalRunStore` runs against a real `tempDir` (same pattern as `local_run_store_test.dart`).
 
