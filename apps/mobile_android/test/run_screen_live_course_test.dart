@@ -26,6 +26,7 @@ import '../lib/screens/run_screen.dart';
 import '../lib/segments.dart';
 import '../lib/social_service.dart';
 import '../lib/training_service.dart';
+import '../lib/widgets/pre_run_status.dart' show PreRunStatusSliver;
 import 'pre_run_dialogs.dart';
 import 'pump_until.dart';
 import 'supabase_test_init.dart';
@@ -282,6 +283,7 @@ void main() {
     GlobalSegmentGeometry? course,
     bool followRoute = true,
     Future<List<LiveCourseCandidate>> Function(double lat, double lng)? nearby,
+    Future<GlobalSegmentGeometry?> Function(String routeId)? lookup,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = Preferences();
@@ -309,10 +311,11 @@ void main() {
         heartRate: BleHeartRate(),
         treadmill: BleTreadmill(),
         initialRoute: followRoute ? _route : null,
-        liveCourseLookup: (id) async {
-          looked.add(id);
-          return id == _routeId ? course : null;
-        },
+        liveCourseLookup: lookup ??
+            (id) async {
+              looked.add(id);
+              return id == _routeId ? course : null;
+            },
         liveCourseNearbyLookup: nearby ?? (lat, lng) async => const [],
       ),
     ));
@@ -444,6 +447,74 @@ void main() {
 
     await holdFinish(tester);
     expect(find.byKey(const ValueKey('course-stopped-short')), findsNothing);
+    await unmount(tester);
+  });
+
+  const boxes = ValueKey('park-course-boxes');
+
+  testWidgets(
+      "a followed park course's start and finish boxes are on the map before "
+      'Start and while recording', (tester) async {
+    await pumpRunScreen(tester, course: _course);
+    await tester.pump();
+    // The pre-run map itself waits for a fix this test never gives it.
+    final preRun =
+        tester.widget<PreRunStatusSliver>(find.byType(PreRunStatusSliver));
+    expect(preRun.courseBoxes?.start, _course.startGate,
+        reason: 'the runner finds the green box before pressing Start');
+    expect(preRun.courseBoxes?.finish, _course.endGate);
+
+    await startRecording(tester);
+    await runEast(tester, -20, 20);
+    expect(find.byKey(boxes), findsOneWidget);
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'a course read as the route was chosen is still timed when the start '
+      'has no signal', (tester) async {
+    var reads = 0;
+    await pumpRunScreen(
+      tester,
+      lookup: (id) async {
+        if (reads++ > 0) throw const SocketException('offline');
+        return _course;
+      },
+    );
+    await tester.pump();
+    await startRecording(tester);
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started'), findsOneWidget);
+    expect(reads, 1, reason: 'Start reuses the course read with the route');
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets('a route that is no park course draws no boxes', (tester) async {
+    await pumpRunScreen(tester, course: null);
+    await tester.pump();
+    expect(find.byKey(boxes), findsNothing);
+    await unmount(tester);
+  });
+
+  testWidgets('a park course found nearby draws its boxes once it is timed',
+      (tester) async {
+    await pumpRunScreen(
+      tester,
+      followRoute: false,
+      nearby: (lat, lng) async =>
+          [LiveCourseCandidate(name: 'Lake loop', segment: _course)],
+    );
+    await startRecording(tester);
+    expect(find.byKey(boxes), findsNothing);
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started: Lake loop'), findsOneWidget);
+    expect(find.byKey(boxes), findsOneWidget);
+
+    await holdFinish(tester);
     await unmount(tester);
   });
 

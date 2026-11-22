@@ -99,6 +99,7 @@ import '../widgets/pre_run_status.dart';
 import '../widgets/race_strategy_sheet.dart';
 import '../widgets/cutoff_card.dart';
 import '../widgets/course_timing_cue.dart';
+import '../gate_crossing.dart' show Gate, gateUsable;
 import '../live_course_timing.dart';
 import '../segments.dart' show GlobalSegmentGeometry;
 import '../widgets/route_picker_sheet.dart';
@@ -941,6 +942,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     _activityType =
         ActivityType.fromName(widget.preferences.defaultActivityType);
     _selectedRoute = widget.initialRoute;
+    unawaited(_lookUpFollowedCourse());
     _loadTreadmillPairing();
     _rebuildTurnAnnouncer();
     _loadCutoffLegs();
@@ -1297,6 +1299,64 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   /// live fix said "Finished!": the course time, for the finished summary.
   double? _courseSettledSeconds;
 
+  /// The followed route's park course, read as the route is chosen so its
+  /// start and finish boxes are on the map before Start; null when the route
+  /// is no course's or the read failed.
+  ({String routeId, GlobalSegmentGeometry geometry})? _followedCourse;
+  int _followedCourseLoad = 0;
+
+  GlobalSegmentGeometry? _followedCourseFor(String? routeId) {
+    final course = _followedCourse;
+    return course != null && course.routeId == routeId ? course.geometry : null;
+  }
+
+  Future<GlobalSegmentGeometry?> _readCourseForRoute(String routeId) async {
+    final lookup = widget.liveCourseLookup;
+    if (lookup != null) return lookup(routeId);
+    final api = widget.apiClient;
+    if (api == null) return null;
+    final listing = await api.fetchParkCourseForRoute(routeId);
+    return listing == null ? null : liveCourseGeometry(listing);
+  }
+
+  /// Reads the followed route's park course for the map. L4: a failure
+  /// leaves the map without boxes and nothing else.
+  Future<void> _lookUpFollowedCourse() async {
+    final load = ++_followedCourseLoad;
+    final routeId = _selectedRoute?.id;
+    if (routeId == null) {
+      if (_followedCourse != null) setState(() => _followedCourse = null);
+      return;
+    }
+    if (_followedCourseFor(routeId) != null) return;
+    try {
+      final geometry = await _readCourseForRoute(routeId);
+      if (!mounted ||
+          load != _followedCourseLoad ||
+          _selectedRoute?.id != routeId) {
+        return;
+      }
+      setState(() => _followedCourse =
+          geometry == null ? null : (routeId: routeId, geometry: geometry));
+    } catch (e) {
+      debugPrint('followed course lookup failed: $e');
+    }
+  }
+
+  /// The start and finish boxes of the course being timed or followed, for
+  /// the map. A race draws its own lines instead.
+  ({Gate start, Gate finish})? get _courseBoxes {
+    if (_raceCourse != null) return null;
+    final segment =
+        _liveCourse?.segment ?? _followedCourseFor(_selectedRoute?.id);
+    final s = segment?.startGate;
+    final e = segment?.endGate;
+    if (s == null || e == null || !gateUsable(s) || !gateUsable(e)) {
+      return null;
+    }
+    return (start: s, finish: e);
+  }
+
   /// Reads the followed route's park course for this recording. Every
   /// failure leaves the recording untimed live and nothing else.
   Future<void> _loadLiveCourse() async {
@@ -1309,17 +1369,12 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       return;
     }
     try {
-      final lookup = widget.liveCourseLookup;
-      final GlobalSegmentGeometry? geometry;
-      if (lookup != null) {
-        geometry = await lookup(routeId);
-      } else {
-        final api = widget.apiClient;
-        if (api == null) return;
-        final listing = await api.fetchParkCourseForRoute(routeId);
-        geometry = listing == null ? null : liveCourseGeometry(listing);
-      }
+      // Read when the route was chosen, so a start with no signal still
+      // times the course.
+      final geometry =
+          _followedCourseFor(routeId) ?? await _readCourseForRoute(routeId);
       if (!mounted || load != _liveCourseLoad || geometry == null) return;
+      _followedCourse = (routeId: routeId, geometry: geometry);
       _liveCourse = LiveCourseTracker.forSegment(geometry);
     } catch (e) {
       debugPrint('live course lookup failed: $e');
@@ -1741,6 +1796,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       setState(() => _selectedRoute = widget.initialRoute);
       _rebuildTurnAnnouncer();
       _loadCutoffLegs();
+      unawaited(_lookUpFollowedCourse());
     }
   }
 
@@ -2062,6 +2118,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     setState(() => _selectedRoute = route);
     _rebuildTurnAnnouncer();
     _loadCutoffLegs();
+    unawaited(_lookUpFollowedCourse());
   }
 
   Future<void> _beginCountdown() async {
@@ -3134,6 +3191,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _selectedRoute = match;
       _rebuildTurnAnnouncer();
       unawaited(_loadCutoffLegs());
+      unawaited(_lookUpFollowedCourse());
     }
 
     // Seed the mirror fields up front so an early crash-save (before the first
@@ -5625,6 +5683,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
                       unit: widget.preferences.unit,
                       plannedRoute: _selectedRoute?.waypoints,
                       offlinePackRouteId: _selectedRoute?.id,
+                      courseBoxes: _courseBoxes,
                       bottomPadding: 8 + startArea,
                     ),
                   ),
@@ -5789,6 +5848,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
             approximateLocation: !isCountdown && _preciseLocationOff,
             courseStartGate: _raceCourse?.startGate,
             courseFinishGate: _raceCourse?.finishGate,
+            courseBoxes: _courseBoxes,
           ),
         ),
 
