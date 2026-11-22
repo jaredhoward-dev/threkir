@@ -1375,7 +1375,9 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
           _followedCourseFor(routeId) ?? await _readCourseForRoute(routeId);
       if (!mounted || load != _liveCourseLoad || geometry == null) return;
       _followedCourse = (routeId: routeId, geometry: geometry);
-      _liveCourse = LiveCourseTracker.forSegment(geometry);
+      final course = LiveCourseTracker.forSegment(geometry);
+      _liveCourse = course;
+      if (course?.phase == LiveCoursePhase.waiting) _onCourseArmed();
     } catch (e) {
       debugPrint('live course lookup failed: $e');
     } finally {
@@ -1552,6 +1554,53 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _announceA11yState(message);
     } catch (e) {
       debugPrint('course timing announce failed: $e');
+    }
+  }
+
+  /// The top chip's words: where the runner stands on the course being
+  /// followed (how far to the start, in the start box, how much of the
+  /// course is left), else how much of the route is left. The route's own
+  /// figure runs to the end of its line, a walk-in from the car park
+  /// included, so it is not what a course runner is counting down.
+  String? _topChipLabel(double? routeRemaining) {
+    String short(double m) => UnitFormat.shortDistance(m, _unit);
+    return switch (_liveCourse?.progress) {
+      CourseToStart(:final metres) => _l10n.runCourseToStart(short(metres)),
+      CourseInStartBox() => _l10n.runCourseInStartBox,
+      CourseToFinish(:final metres) => _l10n.runRouteRemaining(short(metres)),
+      null => routeRemaining == null
+          ? null
+          : _l10n.runRouteRemaining(UnitFormat.distance(routeRemaining, _unit)),
+    };
+  }
+
+  /// A followed course is loaded and not yet timing: say once that the time
+  /// starts on leaving the start box, not at Start, so a runner who pressed
+  /// Start at the car park is not left wondering whether it is timing.
+  void _onCourseArmed() {
+    if (!mounted || _stopRequested) return;
+    final message = _l10n.runCourseTimingHint;
+    try {
+      if (widget.preferences.audioCues) {
+        _ttsCue('courseTimingHint',
+            () => widget.audioCues.announceGuidedCue(message));
+      }
+    } catch (e) {
+      debugPrint('course timing hint cue failed: $e');
+    }
+    try {
+      _courseCue.value = message;
+      _courseCueTimer?.cancel();
+      _courseCueTimer = Timer(const Duration(seconds: 6), () {
+        if (mounted) _courseCue.value = null;
+      });
+    } catch (e) {
+      debugPrint('course timing hint card failed: $e');
+    }
+    try {
+      _announceA11yState(message);
+    } catch (e) {
+      debugPrint('course timing hint announce failed: $e');
     }
   }
 
@@ -5988,9 +6037,10 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
                     ValueListenableBuilder<_LiveStats>(
                       valueListenable: _statsNotifier,
                       builder: (context, stats, _) {
-                        final rem = stats.routeRemaining;
-                        if (rem == null) return const SizedBox.shrink();
+                        final label = _topChipLabel(stats.routeRemaining);
+                        if (label == null) return const SizedBox.shrink();
                         return Container(
+                          key: const ValueKey('run-top-chip'),
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
@@ -6013,8 +6063,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                l10n.runRouteRemaining(
-                                    UnitFormat.distance(rem, _unit)),
+                                label,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600),
                               ),

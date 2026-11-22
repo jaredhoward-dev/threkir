@@ -6481,6 +6481,9 @@
   "runCourseOffCourseCheckpoint": "Du bist von der Strecke abgekommen. Lauf zurück zu Kontrollpunkt {number}.",
   "runCourseOffCourseLine": "Du bist von der Strecke abgekommen. Lauf zurück auf die Strecke.",
   "runCourseTimingStartedNamed": "Zeitmessung gestartet: {course}",
+  "runCourseToStart": "noch {distance} bis zum Start",
+  "runCourseInStartBox": "In der Startbox",
+  "runCourseTimingHint": "Die Zeitmessung startet, sobald du die Startbox verlässt.",
   "runCourseCheckpointLabel": "Kontrollpunkt {number}",
   "runCourseCheckpointPassedLabel": "Kontrollpunkt {number}, passiert"
 }

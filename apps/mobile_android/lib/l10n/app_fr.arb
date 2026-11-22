@@ -6481,6 +6481,9 @@
   "runCourseOffCourseCheckpoint": "Vous êtes sorti du parcours. Revenez au point de contrôle {number}.",
   "runCourseOffCourseLine": "Vous êtes sorti du parcours. Revenez sur le tracé.",
   "runCourseTimingStartedNamed": "Chrono lancé : {course}",
+  "runCourseToStart": "{distance} jusqu'au départ",
+  "runCourseInStartBox": "Dans la zone de départ",
+  "runCourseTimingHint": "Le chrono se lance quand vous quittez la zone de départ.",
   "runCourseCheckpointLabel": "Point de contrôle {number}",
   "runCourseCheckpointPassedLabel": "Point de contrôle {number}, franchi"
 }

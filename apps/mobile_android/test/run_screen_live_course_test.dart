@@ -192,6 +192,20 @@ final _route = cm.Route(
   waypoints: _course.points,
 );
 
+/// The course's route with a 300 m walk-in from the car park, as a park
+/// course's route has.
+final _routeWithWalkIn = cm.Route(
+  id: _routeId,
+  userId: 'u1',
+  name: 'Lake loop',
+  distanceMetres: 500,
+  isPublic: true,
+  waypoints: [
+    cm.Waypoint(lat: _lat, lng: _lng - 300 / _metrePerDegLng),
+    ..._course.points,
+  ],
+);
+
 void main() {
   late _FakeGeolocatorPlatform geolocator;
   late Directory runsDir;
@@ -284,6 +298,7 @@ void main() {
     bool followRoute = true,
     Future<List<LiveCourseCandidate>> Function(double lat, double lng)? nearby,
     Future<GlobalSegmentGeometry?> Function(String routeId)? lookup,
+    cm.Route? route,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = Preferences();
@@ -310,7 +325,7 @@ void main() {
         training: TrainingService(),
         heartRate: BleHeartRate(),
         treadmill: BleTreadmill(),
-        initialRoute: followRoute ? _route : null,
+        initialRoute: followRoute ? (route ?? _route) : null,
         liveCourseLookup: lookup ??
             (id) async {
               looked.add(id);
@@ -488,6 +503,54 @@ void main() {
     await runEast(tester, -20, 60);
     expect(find.text('Timing started'), findsOneWidget);
     expect(reads, 1, reason: 'Start reuses the course read with the route');
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  String chipText(WidgetTester tester) => tester
+      .widget<Text>(find.descendant(
+          of: find.byKey(const ValueKey('run-top-chip')),
+          matching: find.byType(Text)))
+      .data!;
+
+  testWidgets(
+      'the top chip counts down to the start, says the start box, then counts '
+      'the course down rather than the walk-in', (tester) async {
+    await pumpRunScreen(tester, course: _course, route: _routeWithWalkIn);
+    await tester.pump();
+    await startRecording(tester);
+
+    await runEast(tester, -100, -60);
+    expect(chipText(tester), '60 m to the start');
+
+    await runEast(tester, -56, -4);
+    expect(chipText(tester), 'In the start box');
+
+    await runEast(tester, 0, 100);
+    expect(find.text('Timing started'), findsOneWidget);
+    final left = RegExp(r'^(\d+) m to go$').firstMatch(chipText(tester));
+    expect(left, isNotNull, reason: chipText(tester));
+    expect(int.parse(left!.group(1)!), inInclusiveRange(96, 108),
+        reason: 'the 200 m course less about 100 m run, not the route end');
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'starting on a followed course says once that timing starts on leaving '
+      'the start box', (tester) async {
+    const hint = 'Timing starts when you leave the start box.';
+    final s = await pumpRunScreen(tester, course: _course);
+    await tester.pump();
+    await startRecording(tester);
+    expect(find.text(hint), findsOneWidget);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started'), findsOneWidget);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
 
     await holdFinish(tester);
     await unmount(tester);

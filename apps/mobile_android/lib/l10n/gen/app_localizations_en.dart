@@ -24152,6 +24152,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String runCourseToStart(String distance) {
+    return '$distance to the start';
+  }
+
+  @override
+  String get runCourseInStartBox => 'In the start box';
+
+  @override
+  String get runCourseTimingHint =>
+      'Timing starts when you leave the start box.';
+
+  @override
   String runCourseCheckpointLabel(int number) {
     return 'Checkpoint $number';
   }

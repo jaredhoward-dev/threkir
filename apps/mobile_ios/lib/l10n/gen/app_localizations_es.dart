@@ -24407,6 +24407,18 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String runCourseToStart(String distance) {
+    return '$distance hasta la salida';
+  }
+
+  @override
+  String get runCourseInStartBox => 'En el recuadro de salida';
+
+  @override
+  String get runCourseTimingHint =>
+      'El cronometraje empieza cuando sales del recuadro de salida.';
+
+  @override
   String runCourseCheckpointLabel(int number) {
     return 'Punto de control $number';
   }

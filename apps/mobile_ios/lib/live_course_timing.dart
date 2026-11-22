@@ -121,6 +121,30 @@ class LiveCourseEvent {
   final double? timeSeconds;
 }
 
+/// Where the runner stands on a course, for the run screen's top chip
+/// ([LiveCourseTracker.progress]).
+sealed class LiveCourseProgress {
+  const LiveCourseProgress();
+}
+
+/// Not yet in the start box: [metres] in a straight line to the start.
+class CourseToStart extends LiveCourseProgress {
+  const CourseToStart(this.metres);
+  final double metres;
+}
+
+/// In the start box; timing starts on leaving it forward.
+class CourseInStartBox extends LiveCourseProgress {
+  const CourseInStartBox();
+}
+
+/// Timing: [metres] of the course left, the course's length less the
+/// distance run since the start.
+class CourseToFinish extends LiveCourseProgress {
+  const CourseToFinish(this.metres);
+  final double metres;
+}
+
 /// Fed the recorder's line ([offer]) as it grows. One start and one finish
 /// per recording: after the finish it says nothing more, so a runner going
 /// round a loop again is not told a slower lap's time over the one that
@@ -202,6 +226,33 @@ class LiveCourseTracker {
   /// Timing and off the course line: the run screen's warning.
   bool get offCourse => _offCourse;
 
+  double _coveredAtStartM = 0;
+
+  /// Where the latest fix stands on the course; null before the first fix
+  /// and once finished. Counted along the run rather than snapped to the
+  /// course line, so a loop's shared start and finish, or a lapped course
+  /// passing the same ground twice, cannot jump it.
+  LiveCourseProgress? get progress {
+    switch (_phase) {
+      case LiveCoursePhase.finished:
+        return null;
+      case LiveCoursePhase.timing:
+        final left = segment.distanceM - (_coveredM - _coveredAtStartM);
+        return CourseToFinish(left < 0 ? 0 : left);
+      case LiveCoursePhase.waiting:
+        final fix = _prevFix;
+        if (fix == null) return null;
+        final exit = _edges.startExit;
+        final at = gateProjection(exit, fix.lineLat, fix.lineLng);
+        if (at.s <= 0 && at.s >= -_edges.depthM && at.u.abs() <= exit.halfWidthM) {
+          return const CourseInStartBox();
+        }
+        final start = segment.startGate!;
+        return CourseToStart(
+            haversineMetres(fix.lineLat, fix.lineLng, start.lat, start.lng));
+    }
+  }
+
   /// Reads the fixes [line] gained since the last call. [line] is the
   /// recorder's line ([RunSnapshot.track]), which only grows; a shorter one
   /// is a new recording and starts over. Returns what changed, oldest first.
@@ -250,6 +301,7 @@ class LiveCourseTracker {
     _seen = 0;
     _prevMs = double.negativeInfinity;
     _coveredM = 0;
+    _coveredAtStartM = 0;
     _prevFix = null;
     _wasInFinish = false;
     _fixes.clear();
@@ -368,6 +420,7 @@ class LiveCourseTracker {
     _phase = LiveCoursePhase.timing;
     _clearAttempt();
     _walkFrom = fromIdx < 0 ? 0 : fromIdx;
+    _coveredAtStartM = _coveredM;
   }
 }
 

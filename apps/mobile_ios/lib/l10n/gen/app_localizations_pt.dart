@@ -24430,6 +24430,18 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
+  String runCourseToStart(String distance) {
+    return '$distance até à partida';
+  }
+
+  @override
+  String get runCourseInStartBox => 'Na caixa de partida';
+
+  @override
+  String get runCourseTimingHint =>
+      'A cronometragem começa quando sair da caixa de partida.';
+
+  @override
   String runCourseCheckpointLabel(int number) {
     return 'Ponto de controlo $number';
   }
@@ -48844,6 +48856,18 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String runCourseTimingStartedNamed(String course) {
     return 'Cronometragem iniciada: $course';
   }
+
+  @override
+  String runCourseToStart(String distance) {
+    return '$distance até a largada';
+  }
+
+  @override
+  String get runCourseInStartBox => 'Na caixa de largada';
+
+  @override
+  String get runCourseTimingHint =>
+      'A cronometragem começa quando você sair da caixa de largada.';
 
   @override
   String runCourseCheckpointLabel(int number) {

@@ -31387,6 +31387,23 @@
       }
     }
   },
+  "runCourseToStart": "{distance} to the start",
+  "@runCourseToStart": {
+    "description": "The run screen's top chip while following a park course and not yet in its start box: the straight-line distance to the start line, formatted with its unit.",
+    "placeholders": {
+      "distance": {
+        "type": "String"
+      }
+    }
+  },
+  "runCourseInStartBox": "In the start box",
+  "@runCourseInStartBox": {
+    "description": "The run screen's top chip while the runner stands in a park course's start box, before timing starts."
+  },
+  "runCourseTimingHint": "Timing starts when you leave the start box.",
+  "@runCourseTimingHint": {
+    "description": "Shown big over the map, spoken and announced once when a recording starts on a followed park course whose timing has not started: the course time starts on leaving the start box, not at Start."
+  },
   "runCourseCheckpointLabel": "Checkpoint {number}",
   "@runCourseCheckpointLabel": {
     "description": "Screen-reader label of a park course checkpoint on the live run map that the runner has not passed yet",

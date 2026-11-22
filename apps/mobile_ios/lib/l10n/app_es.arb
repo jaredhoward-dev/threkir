@@ -6481,6 +6481,9 @@
   "runCourseOffCourseCheckpoint": "Te has salido del recorrido. Vuelve al punto de control {number}.",
   "runCourseOffCourseLine": "Te has salido del recorrido. Vuelve al trazado.",
   "runCourseTimingStartedNamed": "Cronometraje iniciado: {course}",
+  "runCourseToStart": "{distance} hasta la salida",
+  "runCourseInStartBox": "En el recuadro de salida",
+  "runCourseTimingHint": "El cronometraje empieza cuando sales del recuadro de salida.",
   "runCourseCheckpointLabel": "Punto de control {number}",
   "runCourseCheckpointPassedLabel": "Punto de control {number}, superado"
 }
