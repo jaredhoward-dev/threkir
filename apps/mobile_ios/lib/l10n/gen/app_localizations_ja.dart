@@ -22745,6 +22745,17 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String runCourseToStart(String distance) {
+    return 'スタートまで $distance';
+  }
+
+  @override
+  String get runCourseInStartBox => 'スタートボックス内';
+
+  @override
+  String get runCourseTimingHint => 'スタートボックスを出ると計測が始まります。';
+
+  @override
   String runCourseCheckpointLabel(int number) {
     return 'チェックポイント$number';
   }

@@ -24471,6 +24471,18 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String runCourseToStart(String distance) {
+    return '$distance jusqu\'au départ';
+  }
+
+  @override
+  String get runCourseInStartBox => 'Dans la zone de départ';
+
+  @override
+  String get runCourseTimingHint =>
+      'Le chrono se lance quand vous quittez la zone de départ.';
+
+  @override
   String runCourseCheckpointLabel(int number) {
     return 'Point de contrôle $number';
   }

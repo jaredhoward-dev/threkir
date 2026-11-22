@@ -26,6 +26,7 @@ import '../lib/screens/run_screen.dart';
 import '../lib/segments.dart';
 import '../lib/social_service.dart';
 import '../lib/training_service.dart';
+import '../lib/widgets/pre_run_status.dart' show PreRunStatusSliver;
 import 'pre_run_dialogs.dart';
 import 'pump_until.dart';
 import 'supabase_test_init.dart';
@@ -191,6 +192,21 @@ final _route = cm.Route(
   waypoints: _course.points,
 );
 
+/// The course's route with a 300 m walk-in from the car park and a 300 m
+/// walk on past the finish.
+final _routeWithWalkIn = cm.Route(
+  id: _routeId,
+  userId: 'u1',
+  name: 'Lake loop',
+  distanceMetres: 800,
+  isPublic: true,
+  waypoints: [
+    cm.Waypoint(lat: _lat, lng: _lng - 300 / _metrePerDegLng),
+    ..._course.points,
+    cm.Waypoint(lat: _lat, lng: _lng + 500 / _metrePerDegLng),
+  ],
+);
+
 void main() {
   late _FakeGeolocatorPlatform geolocator;
   late Directory runsDir;
@@ -282,6 +298,8 @@ void main() {
     GlobalSegmentGeometry? course,
     bool followRoute = true,
     Future<List<LiveCourseCandidate>> Function(double lat, double lng)? nearby,
+    Future<GlobalSegmentGeometry?> Function(String routeId)? lookup,
+    cm.Route? route,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = Preferences();
@@ -308,11 +326,12 @@ void main() {
         training: TrainingService(),
         heartRate: BleHeartRate(),
         treadmill: BleTreadmill(),
-        initialRoute: followRoute ? _route : null,
-        liveCourseLookup: (id) async {
-          looked.add(id);
-          return id == _routeId ? course : null;
-        },
+        initialRoute: followRoute ? (route ?? _route) : null,
+        liveCourseLookup: lookup ??
+            (id) async {
+              looked.add(id);
+              return id == _routeId ? course : null;
+            },
         liveCourseNearbyLookup: nearby ?? (lat, lng) async => const [],
       ),
     ));
@@ -444,6 +463,127 @@ void main() {
 
     await holdFinish(tester);
     expect(find.byKey(const ValueKey('course-stopped-short')), findsNothing);
+    await unmount(tester);
+  });
+
+  const boxes = ValueKey('park-course-boxes');
+
+  testWidgets(
+      "a followed park course's start and finish boxes are on the map before "
+      'Start and while recording', (tester) async {
+    await pumpRunScreen(tester, course: _course);
+    await tester.pump();
+    // The pre-run map itself waits for a fix this test never gives it.
+    final preRun =
+        tester.widget<PreRunStatusSliver>(find.byType(PreRunStatusSliver));
+    expect(preRun.courseBoxes?.start, _course.startGate,
+        reason: 'the runner finds the green box before pressing Start');
+    expect(preRun.courseBoxes?.finish, _course.endGate);
+
+    await startRecording(tester);
+    await runEast(tester, -20, 20);
+    expect(find.byKey(boxes), findsOneWidget);
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'a course read as the route was chosen is still timed when the start '
+      'has no signal', (tester) async {
+    var reads = 0;
+    await pumpRunScreen(
+      tester,
+      lookup: (id) async {
+        if (reads++ > 0) throw const SocketException('offline');
+        return _course;
+      },
+    );
+    await tester.pump();
+    await startRecording(tester);
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started'), findsOneWidget);
+    expect(reads, 1, reason: 'Start reuses the course read with the route');
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  String chipText(WidgetTester tester) => tester
+      .widget<Text>(find.descendant(
+          of: find.byKey(const ValueKey('run-top-chip')),
+          matching: find.byType(Text)))
+      .data!;
+
+  testWidgets(
+      'the top chip counts down to the start, says the start box, then counts '
+      'the course down rather than the walk-in', (tester) async {
+    await pumpRunScreen(tester, course: _course, route: _routeWithWalkIn);
+    await tester.pump();
+    await startRecording(tester);
+
+    await runEast(tester, -100, -60);
+    expect(chipText(tester), '60 m to the start');
+
+    await runEast(tester, -56, -4);
+    expect(chipText(tester), 'In the start box');
+
+    await runEast(tester, 0, 100);
+    expect(find.text('Timing started'), findsOneWidget);
+    final left = RegExp(r'^(\d+) m to go$').firstMatch(chipText(tester));
+    expect(left, isNotNull, reason: chipText(tester));
+    expect(int.parse(left!.group(1)!), inInclusiveRange(96, 108),
+        reason: 'the 200 m course less about 100 m run, not the route end');
+
+    await runEast(tester, 104, 240);
+    expect(find.textContaining('Finished!'), findsOneWidget);
+    expect(find.byKey(const ValueKey('run-top-chip')), findsNothing,
+        reason: 'not the walk on past the finish counted as to go');
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'starting on a followed course says once that timing starts on leaving '
+      'the start box', (tester) async {
+    const hint = 'Timing starts when you leave the start box.';
+    final s = await pumpRunScreen(tester, course: _course);
+    await tester.pump();
+    await startRecording(tester);
+    expect(find.text(hint), findsOneWidget);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started'), findsOneWidget);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets('a route that is no park course draws no boxes', (tester) async {
+    await pumpRunScreen(tester, course: null);
+    await tester.pump();
+    expect(find.byKey(boxes), findsNothing);
+    await unmount(tester);
+  });
+
+  testWidgets('a park course found nearby draws its boxes once it is timed',
+      (tester) async {
+    await pumpRunScreen(
+      tester,
+      followRoute: false,
+      nearby: (lat, lng) async =>
+          [LiveCourseCandidate(name: 'Lake loop', segment: _course)],
+    );
+    await startRecording(tester);
+    expect(find.byKey(boxes), findsNothing);
+    await runEast(tester, -20, 60);
+    expect(find.text('Timing started: Lake loop'), findsOneWidget);
+    expect(find.byKey(boxes), findsOneWidget);
+
+    await holdFinish(tester);
     await unmount(tester);
   });
 

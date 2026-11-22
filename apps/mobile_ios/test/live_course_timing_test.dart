@@ -272,6 +272,56 @@ void main() {
     // The start box lies behind the start line and the finish box ahead of
     // the finish line, so the start line is the box's exit edge and the
     // finish line its entry edge.
+    group('progress', () {
+      test('is nothing before the first fix', () {
+        expect(LiveCourseTracker.forSegment(segment)!.progress, isNull);
+      });
+
+      test('counts down to the start line from the car park', () {
+        final fed = _feed(LiveCourseTracker.forSegment(segment)!, run(-300, -40));
+        final p = fed.tracker.progress;
+        expect(p, isA<CourseToStart>());
+        expect((p! as CourseToStart).metres, closeTo(40, 1));
+      });
+
+      test('says the runner is in the start box', () {
+        final fed = _feed(LiveCourseTracker.forSegment(segment)!, run(-40, -4));
+        expect(fed.tracker.progress, isA<CourseInStartBox>());
+      });
+
+      test('beside the box is not in it', () {
+        final fed = _feed(LiveCourseTracker.forSegment(segment)!,
+            [at(-40, 0, eastM: 30), at(-4, 1, eastM: 30)]);
+        expect(fed.tracker.progress, isA<CourseToStart>());
+      });
+
+      test('counts the course down from the start, not from the walk-in', () {
+        final fed =
+            _feed(LiveCourseTracker.forSegment(segment)!, run(-300, 100));
+        final p = fed.tracker.progress;
+        expect(p, isA<CourseToFinish>());
+        expect((p! as CourseToFinish).metres, closeTo(300, 6),
+            reason: '400 m course, about 100 m run since the start line');
+      });
+
+      test('is nothing once finished', () {
+        final fed = _feed(LiveCourseTracker.forSegment(segment)!, run(-10, 430));
+        expect(fed.tracker.phase, LiveCoursePhase.finished);
+        expect(fed.tracker.progress, isNull);
+      });
+
+      test('starts the count again from a restart in the start box', () {
+        final track = [
+          ...run(-10, 30),
+          for (var m = 26.0, s = 11; m >= -10; m -= 4, s++) at(m, s),
+          ...run(-6, 60, startS: 30),
+        ];
+        final fed = _feed(LiveCourseTracker.forSegment(segment)!, track);
+        expect((fed.tracker.progress! as CourseToFinish).metres,
+            closeTo(340, 6));
+      });
+    });
+
     test('nothing before the start box is left', () {
       final fed = _feed(LiveCourseTracker.forSegment(segment)!, run(-40, -2));
       expect(fed.events, isEmpty);

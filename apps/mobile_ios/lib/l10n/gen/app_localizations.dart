@@ -37899,6 +37899,24 @@ abstract class AppLocalizations {
   /// **'Timing started: {course}'**
   String runCourseTimingStartedNamed(String course);
 
+  /// The run screen's top chip while following a park course and not yet in its start box: the straight-line distance to the start line, formatted with its unit.
+  ///
+  /// In en, this message translates to:
+  /// **'{distance} to the start'**
+  String runCourseToStart(String distance);
+
+  /// The run screen's top chip while the runner stands in a park course's start box, before timing starts.
+  ///
+  /// In en, this message translates to:
+  /// **'In the start box'**
+  String get runCourseInStartBox;
+
+  /// Shown big over the map, spoken and announced once when a recording starts on a followed park course whose timing has not started: the course time starts on leaving the start box, not at Start.
+  ///
+  /// In en, this message translates to:
+  /// **'Timing starts when you leave the start box.'**
+  String get runCourseTimingHint;
+
   /// Screen-reader label of a park course checkpoint on the live run map that the runner has not passed yet
   ///
   /// In en, this message translates to:

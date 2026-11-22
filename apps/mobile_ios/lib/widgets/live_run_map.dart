@@ -11,7 +11,9 @@ import 'package:core_models/core_models.dart' show ActivityType;
 import '../preferences.dart' show activeMapStyle;
 import '../tile_cache.dart';
 import '../course_gates.dart' show CourseGate;
+import '../gate_crossing.dart' show Gate;
 import 'course_lines_map.dart' show courseGateLayers;
+import 'park_course_map.dart' show courseGateBoxLayers;
 import 'map_attribution.dart';
 import 'pace_segments.dart';
 import 'track_decorations.dart';
@@ -648,6 +650,7 @@ class LiveRunMap extends StatefulWidget {
     this.courseMarkers = const [],
     this.courseStartGate,
     this.courseFinishGate,
+    this.courseBoxes,
     this.liveCheckpoints = const [],
     this.markerPlacing = false,
     this.onMarkerPlace,
@@ -678,6 +681,9 @@ class LiveRunMap extends StatefulWidget {
   /// the markers. Null for no line at that end.
   final CourseGate? courseStartGate;
   final CourseGate? courseFinishGate;
+
+  /// A park course's start and finish boxes, drawn as its course page does.
+  final ({Gate start, Gate finish})? courseBoxes;
 
   /// A timed park course's checkpoints: numbered and grey until passed, then
   /// ticked. Empty = no checkpoint layer.
@@ -809,6 +815,40 @@ class _LiveRunMapState extends State<LiveRunMap> with TickerProviderStateMixin {
     _positionController.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  List<Widget> _courseBoxLayers(BuildContext context, bool darkBasemap) {
+    final b = widget.courseBoxes;
+    if (b == null) return const [];
+    try {
+      final l10n = AppLocalizations.of(context);
+      return courseGateBoxLayers(
+        start: b.start,
+        finish: b.finish,
+        darkBasemap: darkBasemap,
+        startLabel: l10n.parksLegendStart,
+        finishLabel: l10n.parksLegendFinish,
+        bothLabel: l10n.parksLegendStartFinish,
+        centreLng: _boxesCentreLng(b),
+      );
+    } catch (e) {
+      debugPrint('live run map: course boxes failed: $e');
+      return const [];
+    }
+  }
+
+  /// The longitude a box's name tag points away from: the middle of the
+  /// course line, or of the two boxes when no line is drawn.
+  double _boxesCentreLng(({Gate start, Gate finish}) b) {
+    final line = widget.plannedRoute;
+    if (line == null || line.isEmpty) return (b.start.lng + b.finish.lng) / 2;
+    var lo = line.first.lng;
+    var hi = lo;
+    for (final p in line) {
+      if (p.lng < lo) lo = p.lng;
+      if (p.lng > hi) hi = p.lng;
+    }
+    return (lo + hi) / 2;
   }
 
   void _onPositionTick() {
@@ -1488,6 +1528,8 @@ class _LiveRunMapState extends State<LiveRunMap> with TickerProviderStateMixin {
               finish: widget.courseFinishGate,
               darkBasemap: darkBasemap,
             ),
+            // L3: boxes that cannot be drawn cost their layers, not the map.
+            ..._courseBoxLayers(context, darkBasemap),
 
             // L3: a checkpoint that cannot be drawn costs its layer, never
             // the map under it.

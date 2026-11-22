@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:ui_kit/ui_kit.dart';
 
+import '../gate_crossing.dart' show Gate;
 import '../l10n/gen/app_localizations.dart';
 import '../map_tile_readiness.dart';
 import '../pre_run_status.dart';
@@ -46,6 +47,7 @@ class PreRunStatusSliver extends StatefulWidget {
     required this.unit,
     this.plannedRoute,
     this.offlinePackRouteId,
+    this.courseBoxes,
     this.bottomPadding = 0,
     this.minStageHeight = 200,
     this.clock = DateTime.now,
@@ -64,6 +66,10 @@ class PreRunStatusSliver extends StatefulWidget {
   final DistanceUnit unit;
   final List<Waypoint>? plannedRoute;
   final String? offlinePackRouteId;
+
+  /// The followed park course's start and finish boxes, so the runner can
+  /// see the green box to start in before pressing Start.
+  final ({Gate start, Gate finish})? courseBoxes;
 
   /// Space under the stage for whatever floats over the bottom of the page.
   final double bottomPadding;
@@ -436,6 +442,7 @@ class _PreRunStatusSliverState extends State<PreRunStatusSliver>
                   Waypoint(lat: position.latitude, lng: position.longitude),
               plannedRoute: widget.plannedRoute,
               offlinePackRouteId: widget.offlinePackRouteId,
+              courseBoxes: widget.courseBoxes,
               interactive: false,
               tileHealth: _tiles,
               coarsePosition: !current,

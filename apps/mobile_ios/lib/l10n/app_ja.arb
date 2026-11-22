@@ -6481,6 +6481,9 @@
   "runCourseOffCourseCheckpoint": "コースから外れています。チェックポイント{number}に戻ってください。",
   "runCourseOffCourseLine": "コースから外れています。コースに戻ってください。",
   "runCourseTimingStartedNamed": "計測開始：{course}",
+  "runCourseToStart": "スタートまで {distance}",
+  "runCourseInStartBox": "スタートボックス内",
+  "runCourseTimingHint": "スタートボックスを出ると計測が始まります。",
   "runCourseCheckpointLabel": "チェックポイント{number}",
   "runCourseCheckpointPassedLabel": "チェックポイント{number}、通過済み"
 }
