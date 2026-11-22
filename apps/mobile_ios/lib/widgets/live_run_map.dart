@@ -682,9 +682,7 @@ class LiveRunMap extends StatefulWidget {
   final CourseGate? courseStartGate;
   final CourseGate? courseFinishGate;
 
-  /// A park course's start and finish boxes, drawn as its course page draws
-  /// them (decisions § 2582), so the green box the page says to start in is
-  /// on the recorder's map too. Null for none.
+  /// A park course's start and finish boxes, drawn as its course page does.
   final ({Gate start, Gate finish})? courseBoxes;
 
   /// A timed park course's checkpoints: numbered and grey until passed, then
@@ -817,6 +815,26 @@ class _LiveRunMapState extends State<LiveRunMap> with TickerProviderStateMixin {
     _positionController.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  List<Widget> _courseBoxLayers(BuildContext context, bool darkBasemap) {
+    final b = widget.courseBoxes;
+    if (b == null) return const [];
+    try {
+      final l10n = AppLocalizations.of(context);
+      return courseGateBoxLayers(
+        start: b.start,
+        finish: b.finish,
+        darkBasemap: darkBasemap,
+        startLabel: l10n.parksLegendStart,
+        finishLabel: l10n.parksLegendFinish,
+        bothLabel: l10n.parksLegendStartFinish,
+        centreLng: _boxesCentreLng(b),
+      );
+    } catch (e) {
+      debugPrint('live run map: course boxes failed: $e');
+      return const [];
+    }
   }
 
   /// The longitude a box's name tag points away from: the middle of the
@@ -1510,16 +1528,8 @@ class _LiveRunMapState extends State<LiveRunMap> with TickerProviderStateMixin {
               finish: widget.courseFinishGate,
               darkBasemap: darkBasemap,
             ),
-            if (widget.courseBoxes case final b?)
-              ...courseGateBoxLayers(
-                start: b.start,
-                finish: b.finish,
-                darkBasemap: darkBasemap,
-                startLabel: AppLocalizations.of(context).parksLegendStart,
-                finishLabel: AppLocalizations.of(context).parksLegendFinish,
-                bothLabel: AppLocalizations.of(context).parksLegendStartFinish,
-                centreLng: _boxesCentreLng(b),
-              ),
+            // L3: boxes that cannot be drawn cost their layers, not the map.
+            ..._courseBoxLayers(context, darkBasemap),
 
             // L3: a checkpoint that cannot be drawn costs its layer, never
             // the map under it.

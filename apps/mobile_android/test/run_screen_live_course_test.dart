@@ -192,17 +192,18 @@ final _route = cm.Route(
   waypoints: _course.points,
 );
 
-/// The course's route with a 300 m walk-in from the car park, as a park
-/// course's route has.
+/// The course's route with a 300 m walk-in from the car park and a 300 m
+/// walk on past the finish.
 final _routeWithWalkIn = cm.Route(
   id: _routeId,
   userId: 'u1',
   name: 'Lake loop',
-  distanceMetres: 500,
+  distanceMetres: 800,
   isPublic: true,
   waypoints: [
     cm.Waypoint(lat: _lat, lng: _lng - 300 / _metrePerDegLng),
     ..._course.points,
+    cm.Waypoint(lat: _lat, lng: _lng + 500 / _metrePerDegLng),
   ],
 );
 
@@ -533,6 +534,11 @@ void main() {
     expect(left, isNotNull, reason: chipText(tester));
     expect(int.parse(left!.group(1)!), inInclusiveRange(96, 108),
         reason: 'the 200 m course less about 100 m run, not the route end');
+
+    await runEast(tester, 104, 240);
+    expect(find.textContaining('Finished!'), findsOneWidget);
+    expect(find.byKey(const ValueKey('run-top-chip')), findsNothing,
+        reason: 'not the walk on past the finish counted as to go');
 
     await holdFinish(tester);
     await unmount(tester);

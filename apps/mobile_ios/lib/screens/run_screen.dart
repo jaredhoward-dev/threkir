@@ -1557,14 +1557,13 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// The top chip's words: where the runner stands on the course being
-  /// followed (how far to the start, in the start box, how much of the
-  /// course is left), else how much of the route is left. The route's own
-  /// figure runs to the end of its line, a walk-in from the car park
-  /// included, so it is not what a course runner is counting down.
+  /// On a course the route's figure is wrong: it runs to the end of the
+  /// route line, the walk-in from the car park included.
   String? _topChipLabel(double? routeRemaining) {
     String short(double m) => UnitFormat.shortDistance(m, _unit);
-    return switch (_liveCourse?.progress) {
+    final course = _liveCourse;
+    if (course?.phase == LiveCoursePhase.finished) return null;
+    return switch (course?.progress) {
       CourseToStart(:final metres) => _l10n.runCourseToStart(short(metres)),
       CourseInStartBox() => _l10n.runCourseInStartBox,
       CourseToFinish(:final metres) => _l10n.runRouteRemaining(short(metres)),
@@ -1574,9 +1573,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     };
   }
 
-  /// A followed course is loaded and not yet timing: say once that the time
-  /// starts on leaving the start box, not at Start, so a runner who pressed
-  /// Start at the car park is not left wondering whether it is timing.
+  /// The course time starts on leaving the start box, not at Start.
   void _onCourseArmed() {
     if (!mounted || _stopRequested) return;
     final message = _l10n.runCourseTimingHint;

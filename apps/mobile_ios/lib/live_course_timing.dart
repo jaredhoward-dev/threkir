@@ -121,25 +121,21 @@ class LiveCourseEvent {
   final double? timeSeconds;
 }
 
-/// Where the runner stands on a course, for the run screen's top chip
-/// ([LiveCourseTracker.progress]).
+/// Where the runner stands on a course.
 sealed class LiveCourseProgress {
   const LiveCourseProgress();
 }
 
-/// Not yet in the start box: [metres] in a straight line to the start.
+/// [metres] in a straight line to the start line.
 class CourseToStart extends LiveCourseProgress {
   const CourseToStart(this.metres);
   final double metres;
 }
 
-/// In the start box; timing starts on leaving it forward.
 class CourseInStartBox extends LiveCourseProgress {
   const CourseInStartBox();
 }
 
-/// Timing: [metres] of the course left, the course's length less the
-/// distance run since the start.
 class CourseToFinish extends LiveCourseProgress {
   const CourseToFinish(this.metres);
   final double metres;
