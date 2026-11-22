@@ -784,6 +784,68 @@ void main() {
     });
   });
 
+  group('SyncService — local saves', () {
+    test('a run saved on this device is pushed straight away, even inside a '
+        'backoff window', () async {
+      final api = _FakeApiClient()..throwOnSaveBatch = true;
+      final svc = SyncService(apiClient: api, runStore: store);
+      svc.start();
+      await store.save(makeRun('r-1'));
+      await svc.debugInFlightSync;
+      expect(api.saveBatchCallCount, 1);
+      expect(svc.debugBackoffState().failures, 1);
+
+      api.throwOnSaveBatch = false;
+      await store.save(makeRun('r-2'));
+      await svc.debugInFlightSync;
+      expect(
+        api.saveBatchCallCount,
+        2,
+        reason: 'a deliberate save bypasses the backoff window',
+      );
+      expect(store.unsyncedCount, 0);
+      svc.stop();
+    });
+
+    test('the push marking runs synced does not start another cycle', () async {
+      final api = _FakeApiClient();
+      final svc = SyncService(apiClient: api, runStore: store);
+      svc.start();
+      await store.save(makeRun('r-1'));
+      await svc.debugInFlightSync;
+      await pumpEventQueue();
+      expect(api.saveBatchCallCount, 1);
+      svc.stop();
+    });
+
+    test('syncing is true for the length of a cycle that pushes', () async {
+      final api = _FakeApiClient();
+      final svc = SyncService(apiClient: api, runStore: store);
+      final seen = <bool>[];
+      svc.syncing.addListener(() => seen.add(svc.syncing.value));
+      svc.start();
+      await svc.debugInFlightSync;
+      seen.clear();
+      await store.save(makeRun('r-1'));
+      expect(svc.syncing.value, isTrue);
+      await svc.debugInFlightSync;
+      expect(svc.syncing.value, isFalse);
+      expect(seen, [true, false]);
+      svc.stop();
+    });
+
+    test('stop() stops listening to the store', () async {
+      final api = _FakeApiClient();
+      final svc = SyncService(apiClient: api, runStore: store);
+      svc.start();
+      await svc.debugInFlightSync;
+      svc.stop();
+      await store.save(makeRun('r-1'));
+      await pumpEventQueue();
+      expect(api.saveBatchCallCount, 0);
+    });
+  });
+
   group('SyncService — backoff after failure', () {
     test('successful cycle leaves backoff state at zero', () async {
       await store.save(makeRun('r-1'));
