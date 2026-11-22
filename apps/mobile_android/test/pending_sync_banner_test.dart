@@ -1,4 +1,5 @@
 import 'package:api_client/api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,6 +121,8 @@ Widget _app({
   Locale? locale,
   LocalRunStore? runStore,
   Future<void> Function()? onRetryRuns,
+  ValueListenable<bool>? runsSyncing,
+  EdgeInsetsGeometry margin = EdgeInsets.zero,
 }) =>
     MaterialApp(
       locale: locale,
@@ -132,6 +135,8 @@ Widget _app({
           stores: stores,
           runStore: runStore,
           onRetryRuns: onRetryRuns,
+          runsSyncing: runsSyncing,
+          margin: margin,
         ),
       ),
     );
@@ -155,7 +160,7 @@ void main() {
         _app(api: _SignedInApi(), isOnline: true, stores: [store]));
     expect(find.byIcon(Icons.sync_problem), findsNothing);
     expect(find.byIcon(Icons.cloud_off), findsNothing);
-    expect(find.text('Retry'), findsNothing);
+    expect(find.byTooltip('Retry'), findsNothing);
   });
 
   testWidgets('pending while offline shows the saved-on-device copy, no retry',
@@ -170,7 +175,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byIcon(Icons.cloud_off), findsOneWidget);
-    expect(find.text('Retry'), findsNothing);
+    expect(find.byTooltip('Retry'), findsNothing);
   });
 
   testWidgets('pending while signed out shows the offline copy even if online',
@@ -182,7 +187,7 @@ void main() {
       find.text('1 change saved on this device — will sync when online'),
       findsOneWidget,
     );
-    expect(find.text('Retry'), findsNothing);
+    expect(find.byTooltip('Retry'), findsNothing);
   });
 
   testWidgets('pending while online shows the failed copy; retry drains and '
@@ -193,14 +198,14 @@ void main() {
     expect(find.text("1 change hasn't synced"), findsOneWidget);
     expect(find.byIcon(Icons.sync_problem), findsOneWidget);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pump();
     await tester.pump();
 
     expect(store.pushes, 1);
     expect(store.hasPending, isFalse);
     expect(find.text("1 change hasn't synced"), findsNothing);
-    expect(find.text('Retry'), findsNothing);
+    expect(find.byTooltip('Retry'), findsNothing);
   });
 
   testWidgets('retry leaves the banner up when the server keeps rejecting',
@@ -211,22 +216,22 @@ void main() {
     await tester.pumpWidget(
         _app(api: _SignedInApi(), isOnline: true, stores: [store]));
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pump();
     await tester.pump();
 
     expect(store.pushes, 1);
     expect(store.hasPending, isTrue);
     expect(find.text("1 change hasn't synced"), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byTooltip('Retry'), findsOneWidget);
   });
 
-  testWidgets('the retry action reflows below the message at 320dp in German',
+  testWidgets('a long German retry label cannot starve the message at 320dp',
       (tester) async {
-    // A `TextButton` at the tail of the message row takes its intrinsic width
+    // A `TextButton` at the tail of the message row took its intrinsic width
     // first, so a long German label starved the `Expanded` message down to a
-    // few pixels and the banner grew several hundred pixels tall — enough to
-    // overflow the host screen's body Column (decisions § 488).
+    // few pixels and the banner grew several hundred pixels tall (decisions
+    // § 488). The action is a fixed-width icon with the label as its tooltip.
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final store = _TestStore()..seed('a', SyncState.pendingCreate);
@@ -236,7 +241,7 @@ void main() {
       stores: [store],
       locale: const Locale('de'),
     ));
-    expect(find.text('Erneut versuchen'), findsOneWidget);
+    expect(find.byTooltip('Erneut versuchen'), findsOneWidget);
     expect(tester.getSize(find.byType(PendingSyncBanner)).height, lessThan(120));
   });
 
@@ -248,7 +253,7 @@ void main() {
         _app(api: _SignedInApi(), isOnline: true, stores: [a, b]));
     expect(find.text("2 changes haven't synced"), findsOneWidget);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pump();
     await tester.pump();
 
@@ -256,7 +261,7 @@ void main() {
     expect(b.pushes, 1);
     expect(a.hasPending, isFalse);
     expect(b.hasPending, isFalse);
-    expect(find.text('Retry'), findsNothing);
+    expect(find.byTooltip('Retry'), findsNothing);
   });
 
   group('runs', () {
@@ -277,13 +282,13 @@ void main() {
       ));
       expect(find.text("2 changes haven't synced"), findsOneWidget);
 
-      await tester.tap(find.text('Retry'));
+      await tester.tap(find.byTooltip('Retry'));
       await tester.pump();
       await tester.pump();
 
       expect(drains, 1);
       expect(store.pushes, 1);
-      expect(find.text('Retry'), findsNothing);
+      expect(find.byTooltip('Retry'), findsNothing);
     });
 
     testWidgets('a runner with nothing but an unsynced run still gets the '
@@ -316,8 +321,98 @@ void main() {
         findsOneWidget,
       );
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
-      expect(find.text('Retry'), findsNothing);
+      expect(find.byTooltip('Retry'), findsNothing);
       expect(drains, 0);
     });
+  });
+  group('in flight', () {
+    testWidgets('a run that is uploading reads "Syncing…", not as a failure, '
+        'and offers no Retry until the push ends', (tester) async {
+      final syncing = ValueNotifier(true);
+      final runs = _RunQueue(unsynced: 1);
+      await tester.pumpWidget(
+        _app(
+          api: _SignedInApi(),
+          isOnline: true,
+          stores: [_TestStore()],
+          runStore: runs,
+          runsSyncing: syncing,
+          onRetryRuns: () async {},
+        ),
+      );
+      expect(find.text('Syncing…'), findsOneWidget);
+      expect(find.text("1 change hasn't synced"), findsNothing);
+      expect(find.byTooltip('Retry'), findsNothing);
+
+      syncing.value = false;
+      await tester.pump();
+      expect(find.text("1 change hasn't synced"), findsOneWidget);
+      expect(find.byTooltip('Retry'), findsOneWidget);
+    });
+
+    testWidgets('a successful upload clears the banner outright', (
+      tester,
+    ) async {
+      final syncing = ValueNotifier(true);
+      final runs = _RunQueue(unsynced: 1);
+      await tester.pumpWidget(
+        _app(
+          api: _SignedInApi(),
+          isOnline: true,
+          stores: [_TestStore()],
+          runStore: runs,
+          runsSyncing: syncing,
+        ),
+      );
+      runs.drain();
+      syncing.value = false;
+      await tester.pump();
+      expect(find.text('Syncing…'), findsNothing);
+      expect(find.text("1 change hasn't synced"), findsNothing);
+    });
+
+    testWidgets('offline, a run still reads as saved on the device', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          api: _SignedInApi(),
+          isOnline: false,
+          stores: [_TestStore()],
+          runStore: _RunQueue(unsynced: 1),
+          runsSyncing: ValueNotifier(true),
+        ),
+      );
+      expect(
+        find.text('1 change saved on this device — will sync when online'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  testWidgets('the margin applies only while the banner shows', (tester) async {
+    final store = _TestStore();
+    await tester.pumpWidget(
+      _app(
+        api: _SignedInApi(),
+        isOnline: true,
+        stores: [store],
+        margin: const EdgeInsets.only(bottom: 16),
+      ),
+    );
+    expect(tester.getSize(find.byType(PendingSyncBanner)).height, 0);
+
+    store.seed('a', SyncState.pendingCreate);
+    await tester.pump();
+    final banner = tester.getSize(find.byType(PendingSyncBanner)).height;
+    final card = tester
+        .getSize(
+          find.descendant(
+            of: find.byType(PendingSyncBanner),
+            matching: find.byType(InkWell),
+          ).first,
+        )
+        .height;
+    expect(banner - card, 16);
   });
 }
