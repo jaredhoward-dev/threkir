@@ -67,6 +67,10 @@ class MapOverlayChip extends StatelessWidget {
 /// because icon-only map actions proved undiscoverable (decisions § 1954),
 /// and wraps to a second line rather than leaving the map. The target is
 /// 48 dp high whatever the drawn height.
+///
+/// [compact] draws it about 36 dp high in smaller type, for a map that is
+/// the whole page and stacks several of these over it (Routes → Explore,
+/// decisions § 2611); the label and the 48 dp target stay.
 class MapControlButton extends StatelessWidget {
   const MapControlButton({
     super.key,
@@ -75,6 +79,7 @@ class MapControlButton extends StatelessWidget {
     required this.onPressed,
     this.selected,
     this.selectedIcon,
+    this.compact = false,
   });
 
   /// Already localized.
@@ -88,9 +93,12 @@ class MapControlButton extends StatelessWidget {
   /// The glyph while [selected]; defaults to [icon].
   final IconData? selectedIcon;
 
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final on = selected ?? false;
     final button = ElevatedButton.icon(
       onPressed: onPressed,
@@ -99,7 +107,11 @@ class MapControlButton extends StatelessWidget {
         foregroundColor: on ? scheme.onPrimary : scheme.onSurface,
         elevation: 2,
         shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpace.smPlus),
+        padding: EdgeInsets.symmetric(
+            horizontal: compact ? AppSpace.sm : AppSpace.smPlus),
+        minimumSize: compact ? const Size(0, 36) : null,
+        textStyle: compact ? theme.textTheme.labelMedium : null,
+        iconSize: compact ? 18 : null,
         tapTargetSize: MaterialTapTargetSize.padded,
       ),
       icon: Icon(on ? selectedIcon ?? icon : icon),

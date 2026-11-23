@@ -83,4 +83,24 @@ void main() {
     expect(tester.getRect(find.byType(ElevatedButton)).right,
         lessThanOrEqualTo(320));
   });
+
+  testWidgets('compact draws about 36 dp high, keeps its label and a 48 dp '
+      'target', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(_app(MapControlButton(
+      label: "Where you've run",
+      icon: Icons.person_pin_circle_outlined,
+      compact: true,
+      onPressed: () => taps++,
+    )));
+    final button = find.byType(ElevatedButton);
+    expect(find.text("Where you've run"), findsOneWidget);
+    expect(tester.getSize(button).height, greaterThanOrEqualTo(48),
+        reason: 'the padded target stays 48 dp');
+    final drawn = tester.getSize(
+        find.descendant(of: button, matching: find.byType(Material)));
+    expect(drawn.height, inInclusiveRange(32, 40));
+    await tester.tap(button);
+    expect(taps, 1);
+  });
 }
