@@ -2475,8 +2475,8 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String runOffRoute(int metres) {
-    return 'Fora da rota — a $metres m';
+  String runOffRoute(String distance) {
+    return 'Fora da rota — a $distance';
   }
 
   @override
@@ -26923,8 +26923,8 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   }
 
   @override
-  String runOffRoute(int metres) {
-    return 'Fora da rota — a $metres m';
+  String runOffRoute(String distance) {
+    return 'Fora da rota — a $distance';
   }
 
   @override
