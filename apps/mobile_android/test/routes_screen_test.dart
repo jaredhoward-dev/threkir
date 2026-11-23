@@ -1111,6 +1111,11 @@ void main() {
           of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
       await tester.pump();
       expect(show.value, RoutesShow.routes);
+      // Explore's search is an icon on its chip line (decisions § 2610).
+      await tester.tap(find.descendant(
+          of: find.byType(ExploreRoutesScreen),
+          matching: find.byKey(const Key('filter-bar-search'))));
+      await tester.pump();
       await tester.enterText(
           find.descendant(
               of: find.byType(ExploreRoutesScreen),
@@ -1118,13 +1123,12 @@ void main() {
           'harbour');
       await tester.pump();
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Segments'));
+      // A live query holds the field open over the chips, so the trip to
+      // Segments goes through the shell's channel, as a link would.
+      show.value = RoutesShow.segments;
       await tester.pump();
-      expect(show.value, RoutesShow.segments);
-
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Routes'));
+      show.value = RoutesShow.routes;
       await tester.pump();
-      expect(show.value, RoutesShow.routes);
       expect(
           tester
               .widget<TextField>(find.descendant(

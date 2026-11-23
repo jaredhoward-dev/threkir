@@ -243,6 +243,9 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
     ];
     return FilterBar(
       key: const Key('segments-filter-bar'),
+      // As Explore → Routes does, so the two Explore views read alike
+      // (decisions § 2610).
+      collapsibleSearch: widget.chrome != null,
       search: AppSearchField(
         controller: _search,
         hint: l10n.segmentCatalogueSearchHint,

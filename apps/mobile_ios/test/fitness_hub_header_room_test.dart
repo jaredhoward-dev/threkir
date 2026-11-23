@@ -141,6 +141,22 @@ void main() {
       }
     });
 
+    // decisions § 2610 (owner choice, 2026-11-22): Explore's view switch,
+    // search row and chip line held 172 dp above the map; the search is an
+    // icon at the chip line's end now, so it holds 116.
+    testWidgets('Explore at rest gives the search row back: the search is an '
+        'icon beside Filters on the chip line', (tester) async {
+      await pumpPhone(tester);
+      await openExplore(tester);
+      expect(find.byType(TextField), findsNothing);
+      final icon = find.byKey(const Key('filter-bar-search'));
+      final filters = find.byKey(const Key('filter-bar-filters'));
+      final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
+      expect(tester.getCenter(icon).dy, moreOrLessEquals(line.center.dy));
+      expect(tester.getCenter(filters).dy, moreOrLessEquals(line.center.dy));
+      expect(contentTop(tester, 412) - strip(tester).bottom, 116);
+    });
+
     // Runs' search, filters and kind chips held 116 dp above a list on the
     // move; scrolling down gives the list that height, scrolling up returns
     // it.
@@ -150,13 +166,18 @@ void main() {
       final rest = contentTop(tester, 412);
       expect(rest, greaterThan(strip(tester).bottom + 100));
       final gesture = await tester.startGesture(const Offset(206, 640));
-      await gesture.moveBy(const Offset(0, -120));
-      await gesture.moveBy(const Offset(0, -120));
-      await settle(tester);
+      for (var i = 0; i < 8; i++) {
+        await gesture.moveBy(const Offset(0, -30));
+        await tester.pump();
+      }
       expect(contentTop(tester, 412), strip(tester).bottom,
           reason: 'the control row has gone under the strip');
-      await gesture.moveBy(const Offset(0, 60));
-      await settle(tester);
+      await gesture.moveBy(const Offset(0, 50));
+      await tester.pump();
+      expect(contentTop(tester, 412), strip(tester).bottom + 50,
+          reason: 'it comes back in step with the finger');
+      await gesture.moveBy(const Offset(0, 200));
+      await tester.pump();
       expect(contentTop(tester, 412), rest);
       await gesture.up();
       await settle(tester);
@@ -178,13 +199,22 @@ void main() {
     expect(strip(tester).top, kToolbarHeight,
         reason: 'the map got the title row\'s room');
     expectNoOverflow(tester, 'Explore, title collapsed');
+    // The chips and the two pinned icons share one row at 2x on 320 dp.
+    final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
+    for (final key in ['filter-bar-search', 'filter-bar-filters']) {
+      final r = tester.getRect(find.byKey(Key(key)));
+      expect(r.center.dy, moreOrLessEquals(line.center.dy), reason: key);
+      expect(r.right, lessThanOrEqualTo(kWorstCasePhone.width), reason: key);
+    }
+    expect(find.byType(TextField), findsNothing);
 
     await openTab(tester, 0);
     final gesture = await tester.startGesture(
         Offset(kWorstCasePhone.width / 2, kWorstCasePhone.height * 0.75));
-    await gesture.moveBy(const Offset(0, -100));
-    await gesture.moveBy(const Offset(0, -100));
-    await settle(tester);
+    for (var i = 0; i < 12; i++) {
+      await gesture.moveBy(const Offset(0, -30));
+      await tester.pump();
+    }
     expect(contentTop(tester, kWorstCasePhone.width), strip(tester).bottom,
         reason: 'Runs\' controls slid away under the strip');
     expectNoOverflow(tester, 'Runs, controls hidden');

@@ -542,6 +542,9 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           ];
     return FilterBar(
       key: const ValueKey('explore-routes-filter-bar'),
+      // Under the map the search is an icon at the chip line's end, so the
+      // controls are one row (decisions § 2610); on its own it keeps a row.
+      collapsibleSearch: widget.chrome != null,
       search: nearMe
           ? null
           : AppSearchField(
