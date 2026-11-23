@@ -1297,7 +1297,7 @@ class RoutesScreenState extends State<RoutesScreen> {
     return [
       MapControlButton(
         key: const ValueKey('routes-heatmap-link'),
-        icon: Icons.local_fire_department_outlined,
+        icon: Icons.local_fire_department,
         label: l10n.routesHeatmapTooltip,
         onPressed: () => Navigator.push(
           context,
