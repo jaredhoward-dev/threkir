@@ -750,10 +750,12 @@ void main() {
     });
 
     testWidgets('with Gym and Nutrition hidden the hub is Training, under a '
-        'runner', (tester) async {
+        'plan glyph', (tester) async {
       // "Fitness" under a dumbbell was chosen because the hub holds gym and
       // nutrition too (decisions § 139). With both hidden it holds runs,
-      // routes, plans and races, and a runner scanned past a gym icon.
+      // routes, plans and races, and a runner scanned past a gym icon. Not a
+      // runner either: the centre button beside it wears the default
+      // activity's glyph, a runner for most (decisions § 2608).
       final s = await _makeStores();
       await _pump(tester, s);
       final bar = find.byType(NavigationBar);
@@ -763,12 +765,25 @@ void main() {
           findsNothing);
       expect(
           find.descendant(
-              of: bar, matching: find.byIcon(Icons.directions_run_outlined)),
+              of: bar, matching: find.byIcon(Icons.event_note_outlined)),
           findsOneWidget);
+      expect(
+          find.descendant(
+              of: bar, matching: find.byIcon(Icons.directions_run_outlined)),
+          findsNothing);
       expect(
           find.descendant(
               of: bar, matching: find.byIcon(Icons.fitness_center_outlined)),
           findsNothing);
+      // The runner glyph belongs to the centre button alone.
+      expect(
+          find.descendant(of: bar, matching: find.byIcon(Icons.directions_run)),
+          findsNothing);
+      expect(
+          find.descendant(
+              of: find.byType(FloatingActionButton),
+              matching: find.byIcon(Icons.directions_run)),
+          findsOneWidget);
 
       // Switching a modality on brings Fitness back, without a restart.
       await s.prefs.setShowNutrition(true);
@@ -822,11 +837,19 @@ void main() {
       expect(find.descendant(of: bar, matching: find.text('Log')), findsNothing);
       expect(_semanticsLabelled('Open the recording screen (Run)'),
           findsOneWidget);
+      // The activity's glyph, not play: play is the docked Start's, so a
+      // play icon here promised a start the tap never made (decisions § 2608).
+      expect(
+        find.descendant(
+            of: find.byType(FloatingActionButton),
+            matching: find.byIcon(Icons.directions_run)),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
             of: find.byType(FloatingActionButton),
             matching: find.byIcon(Icons.play_arrow)),
-        findsOneWidget,
+        findsNothing,
       );
     });
 
@@ -845,6 +868,10 @@ void main() {
           findsNothing);
       expect(_semanticsLabelled('Open the recording screen (Cycle)'),
           findsOneWidget);
+      Finder fabIcon(IconData icon) => find.descendant(
+          of: find.byType(FloatingActionButton), matching: find.byIcon(icon));
+      expect(fabIcon(Icons.directions_bike), findsOneWidget);
+      expect(fabIcon(Icons.directions_run), findsNothing);
 
       await tester.runAsync(() => s.prefs.setDefaultActivityType('run'));
       await tester.pump();
@@ -852,6 +879,8 @@ void main() {
           findsOneWidget);
       expect(_semanticsLabelled('Open the recording screen (Run)'),
           findsOneWidget);
+      expect(fabIcon(Icons.directions_run), findsOneWidget);
+      expect(fabIcon(Icons.directions_bike), findsNothing);
     });
 
     testWidgets('the centre button turns back into Log once a lift exists',
@@ -1335,6 +1364,13 @@ void main() {
 
         expect(caption('Start'), findsOneWidget);
         expect(_semanticsLabelled('Start run'), findsOneWidget);
+        // Play is kept for this tap alone, so the glyph turning into play
+        // is the sign that it starts the run (decisions § 2608).
+        expect(
+            find.descendant(
+                of: find.byType(FloatingActionButton),
+                matching: find.byIcon(Icons.play_arrow)),
+            findsOneWidget);
         expect(find.text('START'), findsNothing,
             reason: 'the panel draws no second Start under the docked one');
 

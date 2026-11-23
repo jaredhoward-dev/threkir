@@ -65,7 +65,7 @@ const _selectionPairs = <String>{
 /// `person` / `person_outline` for You are already two stems.
 const _shellNavPairs = <String>{
   'dashboard',
-  'directions_run',
+  'event_note',
   'fitness_center',
   'public',
 };
