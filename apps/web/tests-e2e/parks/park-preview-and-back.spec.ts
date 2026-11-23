@@ -6,7 +6,7 @@ import { USER_A } from '../fixtures/users';
 /**
  * The park page's course preview and the back links around it: a card
  * previews its course on the page (the map, the facts, where to start and
- * an Open course button) with the choice kept in `?course=`, and back goes
+ * a Board button) with the choice kept in `?course=`, and back goes
  * where the reader came from, Races & courses with its `show=courses`
  * included, falling back to Races & courses on a direct link.
  *
@@ -115,13 +115,14 @@ test.describe('park preview and back', () => {
 		await expect(parkBack).toHaveAccessibleName('Races & courses');
 		await expect(parkBack).toHaveAttribute('href', '/races?show=courses');
 
-		await page.getByTestId('park-course-card').first().getByTestId('park-course-open').click();
+		await page.getByTestId('park-course-card').first().locator('button.lc-tap').click();
+		await page.getByTestId('park-course-preview').getByTestId('park-course-preview-open').click();
 		await page.waitForURL(`**${PARK_PATH}/5k`);
 		const courseBack = page.getByTestId('park-course-back');
 		await expect(courseBack).toHaveAccessibleName(PARK_NAME, { timeout: 15_000 });
 		await courseBack.click();
 
-		await page.waitForURL(`**${PARK_PATH}`);
+		await page.waitForURL(new RegExp(`${PARK_PATH}(\\?course=5k)?$`));
 		await expect(page.getByTestId('park-back')).toHaveAccessibleName('Races & courses');
 		await page.getByTestId('park-back').click();
 		await page.waitForURL('**/races?show=courses');
@@ -173,11 +174,8 @@ test.describe('park preview and back', () => {
 		await expect(preview.getByTestId('park-course-preview-laps')).toHaveText('2 × 5 km');
 		await expect(preview.getByTestId('park-course-preview-shape')).toHaveText('Loop');
 		await expect(preview.getByTestId('park-course-preview-start')).toHaveText(START_NOTE);
-		const open = preview.getByRole('link', { name: 'Open course' });
-		await expect(open).toHaveAttribute('href', `${PARK_PATH}/10k`);
-		const directions = preview.getByRole('link', { name: 'Directions to the start and finish' });
-		await expect(directions).toHaveAttribute('href', /destination=37\.20000%2C-78\.89000/);
-		await expect(directions).toHaveAttribute('target', '_blank');
+		const board = preview.getByRole('link', { name: 'Board' });
+		await expect(board).toHaveAttribute('href', `${PARK_PATH}/10k`);
 
 		// Tapping the picked card again keeps the preview: only Close or Escape close it.
 		await pick.click();
@@ -196,7 +194,7 @@ test.describe('park preview and back', () => {
 		await expect(page.getByTestId('park-course-card').nth(1).locator('button.lc-tap')).toBeFocused();
 	});
 
-	test('the preview closes from its button, and Open course opens the course', async ({ page }) => {
+	test('the preview closes from its button, and Board opens the course', async ({ page }) => {
 		await page.goto(`${PARK_PATH}?course=5k`);
 		const preview = page.getByTestId('park-course-preview');
 		await expect(preview).toBeVisible({ timeout: 15_000 });
@@ -204,7 +202,7 @@ test.describe('park preview and back', () => {
 		await expect(preview).toHaveCount(0);
 
 		await page.getByTestId('park-course-card').first().locator('button.lc-tap').click();
-		await page.getByTestId('park-course-preview').getByRole('link', { name: 'Open course' }).click();
+		await page.getByTestId('park-course-preview').getByRole('link', { name: 'Board' }).click();
 		await page.waitForURL(`**${PARK_PATH}/5k`);
 		// Back from the course pops to the park with the preview as it was.
 		await page.getByTestId('park-course-back').click();
@@ -231,18 +229,18 @@ test.describe('park preview and back', () => {
 		await page.waitForURL('**/races?show=courses');
 	});
 
-	test('the first card and the map start on one line, and every card is one height', async ({ page }) => {
+	test('on a wide screen the courses and the map start on one line, the preview under the map', async ({ page }) => {
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await page.goto(`${PARK_PATH}?course=10k`);
 		const cards = page.getByTestId('park-course-card');
 		await expect(cards).toHaveCount(2, { timeout: 15_000 });
 		const map = page.locator('.map-frame');
 		await expect(map).toBeVisible();
-		const first = await cards.first().boundingBox();
+		const courses = await page.locator('section.courses').boundingBox();
 		const frame = await map.boundingBox();
-		expect(Math.abs((first?.y ?? 0) - (frame?.y ?? 99))).toBeLessThanOrEqual(1);
-		const heights = await cards.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
-		expect(new Set(heights).size).toBe(1);
+		expect(Math.abs((courses?.y ?? 0) - (frame?.y ?? 99))).toBeLessThanOrEqual(1);
+		const preview = await page.getByTestId('park-course-preview').boundingBox();
+		expect((preview?.y ?? 0) > (frame?.y ?? 0) + (frame?.height ?? 0) - 1, 'the preview sits under the map').toBe(true);
 		await expect(page.getByTestId('park-website')).toHaveCount(0);
 	});
 });

@@ -383,6 +383,21 @@ See [decisions.md §37](../architecture/decisions.md#37-segments-v1-are-slices-o
 
 ---
 
+## Park courses, map first
+
+See [park_courses.md § Map first](../features/park_courses.md#map-first-decisions--2612) and decisions § 2612. Run each row at the OS's largest text size as well as the default, on a phone (web at 390 px and at 320 px with 200 % zoom).
+
+| Scenario | Steps | Pass |
+|---|---|---|
+| Parks on a map | Web `/parks` (or mobile Races & courses → All park courses) | A map with one pin per park: the course count in a green circle and the park's name. No intro paragraph; the (i) How park courses work opens it. "List · N parks" at the bottom counts the parks the map shows and changes as you pan and zoom. Tapping a pin opens the park. |
+| Search and Near me | Type part of a park or course name; then tap Near me | The pins and the count narrow to the matches. Near me asks for location the usual way (once) and centres the map near you; refusing it says so and leaves the map. |
+| The list one tap away | Tap List · N parks, then go back (browser back on web, back on the phone) | The parks grouped by region, as cards with their course lines, count and distance range. Back returns to the map where it was. On web the URL gains `?view=list`; the list's Map button returns too. On a desktop width the list sits beside the map. |
+| A park, map first | Open a park | Its name once at the top (not repeated in the bar until you scroll), a map of about two fifths of the screen with each course in its own colour, then "N courses" and cards whose strip matches the course's line, each with the whole name (wrapping, never cut), distance · climb · surface, the fastest time this year and runners this month when there are any. |
+| Pick a course | Tap a card, or a course's line on the map | That line is drawn wide over the others faded, its start says "Start here", and a card at the bottom gives the name, the stats, this season's fastest time, Run this course (phone; See the route on web) and Board. Board opens the course page with its boards; Close returns to the plain park map. Run this course opens the recorder with the course loaded and does not start. |
+| About this park | Scroll to the end of a park and open About this park | The park's description, its Website link, and both notices (not affiliated with the park; a group run may need a permit). |
+
+---
+
 ## Park course timing
 
 See [park_courses.md](../features/park_courses.md) (the box rule, "Why no time", live timing) and decisions § 2589 and §§ 2595 to 2599. Do these on a staged course loaded locally (`bin/seed-demo.sh`) or a live one; nobody has walked these on a device yet.

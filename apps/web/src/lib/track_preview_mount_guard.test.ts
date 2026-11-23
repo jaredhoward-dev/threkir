@@ -67,8 +67,6 @@ const STATIC_DEMO_MOUNTS: Record<string, RegExp> = {
  * fails if one reaches a runner's runs or routes.
  */
 const CATALOGUE_MOUNTS: Record<string, RegExp> = {
-	'routes/parks/[region]/[park]/+page.svelte':
-		/import \{[^}]*\bfetchParkCourses\b[^}]*\} from '#lib\/core\/data\.ts'/,
 	'routes/segments/+page.svelte':
 		/import \{[^}]*\bfetchGlobalSegmentsWithError\b[^}]*\} from '#lib\/core\/data\.ts'/,
 };

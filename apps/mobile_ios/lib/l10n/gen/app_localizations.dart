@@ -35853,6 +35853,48 @@ abstract class AppLocalizations {
   /// **'{n, plural, one {Map of the park\'s course} other {Map of the park\'s {n} courses}}'**
   String parksMapParkLabel(int n);
 
+  /// Park courses map (decisions § 2612): the button under the parks map that opens them as a list; n is how many parks the map shows. Web key parks.listButton.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one {List · {n} park} other {List · {n} parks}}'**
+  String parksListButton(int n);
+
+  /// Park courses map (decisions § 2612): the info button in the top bar and the title of the sheet holding the intro. Web key parks.howItWorks.
+  ///
+  /// In en, this message translates to:
+  /// **'How park courses work'**
+  String get parksHowItWorks;
+
+  /// Screen-reader label of the parks map (decisions § 2612). Web key parks.mapLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Map of park courses'**
+  String get parksMapLabel;
+
+  /// Screen-reader name of a park's pin on the parks map: the park's name and its course count (parksCourseCount, already formatted). Web key parks.markerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{park}, {count}'**
+  String parksMapMarkerLabel(String park, String count);
+
+  /// Park page (decisions § 2612): the folded row at the end holding the description, website and notices. Web key parks.aboutPark.
+  ///
+  /// In en, this message translates to:
+  /// **'About this park'**
+  String get parksAboutPark;
+
+  /// Park page map (decisions § 2612): the label at a picked course's start. Web key parks.startHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Start here'**
+  String get parksStartHere;
+
+  /// Park page (decisions § 2612): the picked course's button that opens its season board and course page. Web key parks.board.
+  ///
+  /// In en, this message translates to:
+  /// **'Board'**
+  String get parksBoard;
+
   /// Accessible label of the event course map showing start and finish timing lines (#1305)
   ///
   /// In en, this message translates to:

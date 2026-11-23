@@ -12,6 +12,7 @@ import '../course_jump.dart';
 import '../gate_crossing.dart' show Gate;
 import '../l10n/gen/app_localizations.dart';
 import '../park_courses.dart' show CourseCheckpoint, checkpointMarks;
+import '../park_map.dart' show ParkMapBounds, ParkMapPoint;
 import '../run_stats.dart' show haversineMetres;
 import 'live_run_map.dart'
     show
@@ -1064,6 +1065,491 @@ class ParkOverviewMap extends StatelessWidget {
               ],
             ),
           ),
+      ),
+    );
+  }
+}
+
+/// One park on the parks map (decisions § 2612): where `parkMarkerPoint`
+/// puts it, its name and how many courses it has.
+@immutable
+class ParkMapPin {
+  final String id;
+  final String name;
+  final int courseCount;
+  final ParkMapPoint point;
+
+  const ParkMapPin({
+    required this.id,
+    required this.name,
+    required this.courseCount,
+    required this.point,
+  });
+}
+
+/// Every park on one map: a pill per park with its course count in a green
+/// circle and its name, which opens the park. Frames the pins until the
+/// reader moves the map, and reports every settled view so the page can count
+/// the parks in it.
+class ParksMap extends StatefulWidget {
+  final List<ParkMapPin> pins;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<ParkMapBounds>? onView;
+
+  const ParksMap({
+    super.key,
+    required this.pins,
+    required this.onOpen,
+    this.onView,
+  });
+
+  @override
+  State<ParksMap> createState() => ParksMapState();
+}
+
+class ParksMapState extends State<ParksMap> {
+  final MapController _map = MapController();
+  bool _ready = false;
+  bool _readerMoved = false;
+
+  /// Centres the map on a place the reader asked for (Near me).
+  void showPlace(ParkMapPoint point) {
+    if (!_ready) return;
+    _readerMoved = true;
+    _map.move(LatLng(point.lat, point.lng), 9);
+    _report();
+  }
+
+  @override
+  void didUpdateWidget(ParksMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_ready && !_samePins(oldWidget.pins, widget.pins)) {
+      if (!_readerMoved) _frame();
+      _report();
+    }
+  }
+
+  static bool _samePins(List<ParkMapPin> a, List<ParkMapPin> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].point != b[i].point) return false;
+    }
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
+  }
+
+  void _frame() {
+    final pins = widget.pins;
+    if (pins.isEmpty) return;
+    if (pins.length == 1) {
+      _map.move(LatLng(pins.first.point.lat, pins.first.point.lng), 10);
+      return;
+    }
+    _map.fitCamera(
+      CameraFit.coordinates(
+        coordinates: [for (final p in pins) LatLng(p.point.lat, p.point.lng)],
+        padding: const EdgeInsets.all(56),
+        maxZoom: 12,
+      ),
+    );
+  }
+
+  /// Reports the view after the frame: a camera change can land inside a
+  /// build (new pins arriving), where the page may not set its state.
+  void _report() {
+    if (widget.onView == null || !_ready) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final onView = widget.onView;
+      if (!mounted || onView == null) return;
+      final b = _map.camera.visibleBounds;
+      onView((south: b.south, west: b.west, north: b.north, east: b.east));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final darkBasemap = currentBasemapIsDark(context);
+    // semantics-children: each pin is its own button inside the map's name
+    return Semantics(
+      container: true,
+      label: l10n.parksMapLabel,
+      child: FlutterMap(
+        mapController: _map,
+        options: MapOptions(
+          backgroundColor: basemapVoidColour(darkBasemap: darkBasemap),
+          initialCenter: const LatLng(38, -78),
+          initialZoom: 5,
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          ),
+          onMapReady: () {
+            _ready = true;
+            _frame();
+            _report();
+          },
+          onPositionChanged: (_, hasGesture) {
+            if (hasGesture) _readerMoved = true;
+          },
+          onMapEvent: (e) {
+            if (e is MapEventMoveEnd ||
+                e is MapEventFlingAnimationEnd ||
+                e is MapEventDoubleTapZoomEnd ||
+                e is MapEventScrollWheelZoom) {
+              _report();
+            }
+          },
+        ),
+        children: [
+          basemapTileLayer(urlTemplate: currentTileUrl(context)),
+          MarkerLayer(
+            key: const ValueKey('parks-map-pins'),
+            markers: [
+              for (final p in widget.pins)
+                Marker(
+                  point: LatLng(p.point.lat, p.point.lng),
+                  width: 200,
+                  height: 76,
+                  alignment: Alignment.topCenter,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _ParkPinChip(
+                      key: ValueKey('parks-map-pin-${p.id}'),
+                      pin: p,
+                      onTap: () => widget.onOpen(p.id),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParkPinChip extends StatelessWidget {
+  final ParkMapPin pin;
+  final VoidCallback onTap;
+
+  const _ParkPinChip({super.key, required this.pin, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final semantic = AppSemanticColors.of(context);
+    final text = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    // The pill has a fixed box on the map, so its text scales only so far;
+    // the list one tap away carries every name in full at any size.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Semantics(
+        button: true,
+        label: l10n.parksMapMarkerLabel(
+          pin.name,
+          l10n.parksCourseCount(pin.courseCount),
+        ),
+        onTap: onTap,
+        excludeSemantics: true,
+        child: Material(
+          color: theme.colorScheme.surface,
+          elevation: 2,
+          shape: StadiumBorder(
+            side: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const StadiumBorder(),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 4, 12, 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      constraints:
+                          const BoxConstraints(minWidth: 26, minHeight: 26),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      alignment: Alignment.center,
+                      decoration: ShapeDecoration(
+                        color: semantic.success,
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(
+                        '${pin.courseCount}',
+                        style: text?.copyWith(color: semantic.onSuccess),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        pin.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Every course of one park on a map, each in its own colour
+/// ([parkCourseLineColour], which the course cards' strips repeat), with each
+/// distinct start marked (decisions § 2612). A tap on a line picks its course
+/// ([onSelect]); a picked course is drawn wide over the others faded, framed,
+/// and its start says "Start here".
+class ParkCoursesOverviewMap extends StatefulWidget {
+  final List<List<Waypoint>> lines;
+  final int? selected;
+  final ({double lat, double lng})? selectedStart;
+  final ValueChanged<int>? onSelect;
+
+  const ParkCoursesOverviewMap({
+    super.key,
+    required this.lines,
+    this.selected,
+    this.selectedStart,
+    this.onSelect,
+  });
+
+  @override
+  State<ParkCoursesOverviewMap> createState() => _ParkCoursesOverviewMapState();
+}
+
+class _ParkCoursesOverviewMapState extends State<ParkCoursesOverviewMap> {
+  final MapController _map = MapController();
+  final LayerHitNotifier<int> _hits = ValueNotifier(null);
+  bool _ready = false;
+
+  @override
+  void didUpdateWidget(ParkCoursesOverviewMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_ready && oldWidget.selected != widget.selected) _frame();
+  }
+
+  @override
+  void dispose() {
+    _hits.dispose();
+    _map.dispose();
+    super.dispose();
+  }
+
+  List<LatLng> _framed() {
+    final s = widget.selected;
+    final lines = s != null && s >= 0 && s < widget.lines.length
+        ? [widget.lines[s]]
+        : widget.lines;
+    return [
+      for (final l in lines)
+        for (final w in l) _ll(w),
+    ];
+  }
+
+  void _frame() {
+    final pts = _framed();
+    if (pts.isEmpty) return;
+    _map.fitCamera(
+      CameraFit.coordinates(
+        coordinates: pts,
+        padding: const EdgeInsets.all(28),
+        maxZoom: 16,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final darkBasemap = currentBasemapIsDark(context);
+    final ends = _endPalette(darkBasemap);
+    final ring = mapOverlayOutline(darkBasemap: darkBasemap);
+    final lines = widget.lines;
+    final drawn = [
+      for (var i = 0; i < lines.length; i++)
+        if (lines[i].length >= 2) i,
+    ];
+    if (drawn.isEmpty) return const SizedBox.shrink();
+    final selected = widget.selected;
+    final starts = <Waypoint>[];
+    for (final i in drawn) {
+      final s = lines[i].first;
+      final near = starts.any((o) =>
+          haversineMetres(o.lat, o.lng, s.lat, s.lng) <= kParkStartMergeM);
+      if (!near) starts.add(s);
+    }
+    final start = widget.selectedStart;
+    final onSelect = widget.onSelect;
+    // semantics-children: the map's credit line keeps its own node
+    return Semantics(
+      container: true,
+      label: l10n.parksMapParkLabel(drawn.length),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: FlutterMap(
+          mapController: _map,
+          options: MapOptions(
+            backgroundColor: basemapVoidColour(darkBasemap: darkBasemap),
+            initialCameraFit: CameraFit.coordinates(
+              coordinates: _framed(),
+              padding: const EdgeInsets.all(28),
+              maxZoom: 16,
+            ),
+            // The page scrolls past the map with one finger; the map moves
+            // only to frame the course the reader picked.
+            interactionOptions:
+                const InteractionOptions(flags: InteractiveFlag.none),
+            onMapReady: () => _ready = true,
+          ),
+          children: [
+            basemapTileLayer(urlTemplate: currentTileUrl(context)),
+            PolylineLayer(
+              key: const ValueKey('park-overview-lines'),
+              polylines: [
+                for (final i in drawn.reversed)
+                  if (i != selected)
+                    ...solidMapLine(
+                      [for (final w in lines[i]) _ll(w)],
+                      parkCourseLineColour(i, darkBasemap: darkBasemap)
+                          .withValues(alpha: selected == null ? 1 : 0.3),
+                    ),
+                if (selected != null && drawn.contains(selected)) ...[
+                  Polyline(
+                    points: [for (final w in lines[selected]) _ll(w)],
+                    strokeWidth: 11,
+                    color: ring,
+                  ),
+                  Polyline(
+                    points: [for (final w in lines[selected]) _ll(w)],
+                    strokeWidth: 7,
+                    color: parkCourseLineColour(
+                      selected,
+                      darkBasemap: darkBasemap,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (onSelect != null)
+              GestureDetector(
+                behavior: HitTestBehavior.deferToChild,
+                onTap: () {
+                  final hit = _hits.value?.hitValues;
+                  if (hit != null && hit.isNotEmpty) onSelect(hit.first);
+                },
+                child: PolylineLayer<int>(
+                  key: const ValueKey('park-overview-hits'),
+                  hitNotifier: _hits,
+                  minimumHitbox: 14,
+                  polylines: [
+                    for (final i in drawn)
+                      Polyline<int>(
+                        points: [for (final w in lines[i]) _ll(w)],
+                        strokeWidth: 4,
+                        color: Colors.transparent,
+                        hitValue: i,
+                      ),
+                  ],
+                ),
+              ),
+            if (selected == null)
+              MarkerLayer(
+                key: const ValueKey('park-overview-starts'),
+                markers: [
+                  for (final s in starts)
+                    Marker(
+                      point: _ll(s),
+                      width: 24,
+                      height: 24,
+                      child: _EndMarker(
+                        icon: Icons.play_arrow,
+                        fill: ends.success,
+                        ink: ends.onSuccess,
+                        ring: ring,
+                      ),
+                    ),
+                ],
+              )
+            else if (start != null)
+              MarkerLayer(
+                key: const ValueKey('park-overview-start-here'),
+                markers: [
+                  Marker(
+                    point: LatLng(start.lat, start.lng),
+                    width: 180,
+                    height: 56,
+                    alignment: Alignment.topCenter,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: _StartHereTag(darkBasemap: darkBasemap),
+                    ),
+                  ),
+                ],
+              ),
+            MapAttribution(darkBasemap: darkBasemap),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StartHereTag extends StatelessWidget {
+  final bool darkBasemap;
+  const _StartHereTag({required this.darkBasemap});
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = mapBoxInk(darkBasemap: darkBasemap);
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          color: mapStartZoneColour(darkBasemap: darkBasemap),
+          shape: StadiumBorder(
+            side: BorderSide(
+              width: 2,
+              color: mapOverlayOutline(darkBasemap: darkBasemap),
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 2, 10, 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.flag_outlined, size: 18, color: ink),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  AppLocalizations.of(context).parksStartHere,
+                  key: const Key('park-overview-start-here-label'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(color: ink, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
