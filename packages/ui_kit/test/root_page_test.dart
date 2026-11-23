@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,10 +29,11 @@ final _heading = find.descendant(
     of: find.byType(PageHeader), matching: find.text(_title));
 
 class _Hub extends StatefulWidget {
-  const _Hub({this.onAction, this.initialIndex = 0});
+  const _Hub({this.onAction, this.initialIndex = 0, this.collapseTitle});
 
   final VoidCallback? onAction;
   final int initialIndex;
+  final ValueListenable<bool>? collapseTitle;
 
   @override
   State<_Hub> createState() => _HubState();
@@ -59,6 +61,7 @@ class _HubState extends State<_Hub> with SingleTickerProviderStateMixin {
         title: _title,
         controller: _controller,
         labels: const ['One', 'Two'],
+        collapseTitle: widget.collapseTitle,
         actions: [
           IconButton(
             key: const ValueKey('root-action'),
@@ -71,8 +74,9 @@ class _HubState extends State<_Hub> with SingleTickerProviderStateMixin {
       );
 }
 
-Widget _plain({List<Widget> actions = const []}) => RootPage(
-      title: _title,
+Widget _plain({List<Widget> actions = const [], String title = _title}) =>
+    RootPage(
+      title: title,
       actions: actions,
       body: ListView(children: [
         for (var i = 0; i < 40; i++) ListTile(title: Text('row $i')),
@@ -252,14 +256,81 @@ void main() {
         moreOrLessEquals(tester.getRect(find.byType(AppBar)).center.dy));
   });
 
+  // decisions § 2610: a map never scrolls the page, so the large title sat
+  // over it for good; a tab that asks collapses it as a scroll would.
+  testWidgets('a hub collapses its title when the showing tab asks, and '
+      'leaves it collapsed for the next tab', (tester) async {
+    await _phone(tester);
+    final collapse = ValueNotifier(false);
+    addTearDown(collapse.dispose);
+    await tester.pumpWidget(_app(_Hub(collapseTitle: collapse)));
+    await tester.pump();
+    expect(_barOpacity(tester), 0);
+    final restTop = tester.getRect(find.byType(TabBar)).top;
+
+    collapse.value = true;
+    await tester.pumpAndSettle();
+    expect(_barOpacity(tester), 1, reason: 'the bar says the name');
+    final bar = tester.getRect(find.byType(AppBar));
+    final stripTop = tester.getRect(find.byType(TabBar)).top;
+    expect(stripTop, moreOrLessEquals(bar.bottom));
+    expect(stripTop, lessThan(restTop), reason: 'the tab got the room');
+
+    collapse.value = false;
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(TabBar)).top, stripTop,
+        reason: 'the strip does not move again when the next tab shows');
+  });
+
+  testWidgets('with reduced motion the title collapses at once',
+      (tester) async {
+    await _phone(tester);
+    final collapse = ValueNotifier(true);
+    addTearDown(collapse.dispose);
+    await tester.pumpWidget(
+        _app(_Hub(collapseTitle: collapse), reduceMotion: true));
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getRect(find.byType(TabBar)).top,
+        moreOrLessEquals(_statusBar + kToolbarHeight));
+  });
+
   testWidgets('a root without actions puts its title right under the status '
-      'bar', (tester) async {
+      'bar, on the row a root with actions has', (tester) async {
     await _phone(tester);
     await tester.pumpWidget(_app(_plain(), scale: 1));
     await tester.pump();
-    expect(tester.getRect(_heading).top,
-        moreOrLessEquals(_statusBar + AppSpace.md));
+    expect(
+        tester.getRect(_heading).center.dy,
+        moreOrLessEquals(
+            _statusBar + AppSpace.xs + kMinInteractiveDimension / 2),
+        reason: 'the title is centred on a row an action could fill');
     expect(find.byType(AppBar).hitTestable(), findsNothing);
+  });
+
+  // decisions § 2610: a ⋮ on one tab and none on the next moved the strip
+  // 16 dp on every switch; at 1.0x the row is the compact bar's height
+  // whether an action shows or not, so the strip never moves and the title
+  // row costs no more than the bar it collapses into.
+  testWidgets('the title row is one height with or without an action, the '
+      'compact bar\'s at 1.0x', (tester) async {
+    await _phone(tester);
+    double row() => tester.getRect(find.byType(ListView)).top - _statusBar;
+    // A title that fits one line beside the action in the test font.
+    await tester.pumpWidget(_app(_plain(title: 'Runs'), scale: 1));
+    await tester.pump();
+    final bare = row();
+    await tester.pumpWidget(_app(
+        _plain(title: 'Runs', actions: [
+          IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'More'),
+        ]),
+        scale: 1));
+    await tester.pump();
+    expect(row(), moreOrLessEquals(bare));
+    expect(row(), moreOrLessEquals(kToolbarHeight));
   });
 
   testWidgets('right to left, the actions lead the title row',
