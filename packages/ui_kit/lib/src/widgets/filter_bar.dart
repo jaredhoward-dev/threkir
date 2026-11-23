@@ -194,8 +194,11 @@ class FilterToggle extends StatelessWidget {
 /// actions stand at the end of the chip line, outside its scroll, rather
 /// than taking a row above it. Two or more chips keep their own line, which
 /// scrolls sideways and fades at an edge with more beyond it
-/// ([EdgeFadeScroll]). A tab's views ([views], a [ViewSwitch]) are a row of
-/// their own above everything else, and a filter never joins them.
+/// ([EdgeFadeScroll]). That line runs to the screen edges, the gutter inside
+/// its scroll, so a chip past the edge is cut by the screen rather than 16 dp
+/// short of it and the last chip can scroll clear (decisions § 2610). A tab's
+/// views ([views], a [ViewSwitch]) are a row of their own above everything
+/// else, and a filter never joins them.
 class FilterBar extends StatelessWidget {
   const FilterBar({
     super.key,
@@ -340,8 +343,18 @@ class FilterBar extends StatelessWidget {
           padding: const EdgeInsetsDirectional.only(end: AppSpace.sm),
           child: child,
         );
+    final start = padding.left;
+    final end = padding.right;
+    Widget gutters(Widget row) => Padding(
+          padding: EdgeInsetsDirectional.only(start: start, end: end),
+          child: row,
+        );
     final line = EdgeFadeScroll(
       scrollKey: const Key('filter-bar-chips'),
+      // With the actions at its end, the line stops at them, so only its
+      // start runs to the edge.
+      padding: EdgeInsetsDirectional.only(
+          start: start, end: actionsOnLine ? 0 : end),
       child: Row(
         children: [
           if (filtersOnLine) spaced(_filtersButton()),
@@ -364,9 +377,9 @@ class FilterBar extends StatelessWidget {
         // semantics-children: a group name, read once before the controls inside it
         : Semantics(container: true, label: chipsLabel, child: line);
     final rows = <Widget>[
-      ?views,
+      if (views case final views?) gutters(views),
       if (hasTop)
-        Row(
+        gutters(Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             if (search case final search?) Expanded(child: search),
@@ -375,18 +388,21 @@ class FilterBar extends StatelessWidget {
             if (filtersBesideSearch) _filtersButton(),
             if (!actionsOnLine) ...trailing,
           ],
-        ),
+        )),
       if (hasLine)
         actionsOnLine
-            ? Row(
-                key: const Key('filter-bar-line-actions'),
-                children: [Expanded(child: labelledLine), ...trailing],
+            ? Padding(
+                padding: EdgeInsetsDirectional.only(end: end),
+                child: Row(
+                  key: const Key('filter-bar-line-actions'),
+                  children: [Expanded(child: labelledLine), ...trailing],
+                ),
               )
             : labelledLine,
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: padding,
+      padding: EdgeInsets.only(top: padding.top, bottom: padding.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

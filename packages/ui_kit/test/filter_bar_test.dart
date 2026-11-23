@@ -238,6 +238,26 @@ void main() {
       expect(state(tester).fadesStart, isTrue);
     });
 
+    // decisions § 2610 (issue #1374 owner finding 6): a gutter outside the
+    // scroll cut the line 16 dp short of the screen, so the chip beyond read
+    // as clipped ("Near Me fading off the right edge") and the last could
+    // never scroll clear of the edge.
+    testWidgets('the line runs to the screen edges with the gutter inside its '
+        'scroll, and the last chip scrolls clear', (tester) async {
+      await _pump(tester, width: 320, FilterBar(chips: _bands('All', (_) {})));
+      await tester.pump();
+      final scroller = tester.getRect(find.byKey(const Key('filter-bar-chips')));
+      expect(scroller.left, 0);
+      expect(scroller.right, 320);
+      expect(tester.getRect(find.widgetWithText(ChoiceChip, 'All')).left,
+          AppInsets.gutter);
+      await tester.drag(
+          find.byKey(const Key('filter-bar-chips')), const Offset(-2000, 0));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.widgetWithText(ChoiceChip, 'Trail')).right,
+          lessThanOrEqualTo(320 - AppInsets.gutter));
+    });
+
     testWidgets('a line that fits does not fade', (tester) async {
       await _pump(
         tester,

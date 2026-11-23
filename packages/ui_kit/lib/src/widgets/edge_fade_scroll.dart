@@ -15,6 +15,7 @@ class EdgeFadeScroll extends StatefulWidget {
     required this.child,
     this.scrollKey,
     this.fadeExtent = 32,
+    this.padding,
   });
 
   final Widget child;
@@ -25,6 +26,12 @@ class EdgeFadeScroll extends StatefulWidget {
 
   /// How far in from the edge the fade runs, in logical pixels.
   final double fadeExtent;
+
+  /// Space inside the scroll at either end. A line that runs to the screen
+  /// edge takes the page gutter here rather than outside it, so the item
+  /// beyond reaches the edge and reads as more, and the last one can scroll
+  /// clear of it.
+  final EdgeInsetsGeometry? padding;
 
   @override
   State<EdgeFadeScroll> createState() => EdgeFadeScrollState();
@@ -113,6 +120,7 @@ class EdgeFadeScrollState extends State<EdgeFadeScroll> {
             key: widget.scrollKey,
             controller: _controller,
             scrollDirection: Axis.horizontal,
+            padding: widget.padding,
             child: widget.child,
           ),
         ),
