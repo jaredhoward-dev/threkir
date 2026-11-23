@@ -37,7 +37,7 @@ export const AREAS = {
 	clubs: ['/clubs', '/club-verification'],
 	clubDetail: ['/clubs/[slug]'],
 	clubEvents: ['/clubs/[slug]/events'],
-	routes: ['/routes'],
+	routes: ['/routes', '/segments'],
 	routeBuilder: ['/routes/new'],
 	plans: ['/plans'],
 	planDetail: ['/plans/[id]'],
