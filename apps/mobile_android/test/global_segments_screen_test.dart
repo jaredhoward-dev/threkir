@@ -11,6 +11,7 @@ import 'package:ui_kit/ui_kit.dart' show EmptyState, PageHeading;
 import '../lib/fitness_surface_requests.dart';
 import '../lib/screens/global_segments_screen.dart';
 import '../lib/screens/park_courses_screen.dart';
+import '../lib/screens/parks_screen.dart';
 import '../lib/screens/races_screen.dart';
 import '../lib/routes_views.dart';
 import 'supabase_test_init.dart';

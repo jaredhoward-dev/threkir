@@ -6,10 +6,12 @@ import 'package:core_models/core_models.dart';
 import 'package:core_models/core_models.dart' as cm show Route;
 import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart' show PolygonLayer;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart' show Position;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FunctionException;
 import 'package:ui_kit/ui_kit.dart' show EmptyState;
@@ -19,6 +21,7 @@ import '../lib/main.dart' show pendingArmRunWithRoute;
 import '../lib/screens/run_screen.dart' show runRecordingActive;
 import '../lib/park_courses.dart' show BoardPeriod;
 import '../lib/screens/park_courses_screen.dart';
+import '../lib/screens/parks_screen.dart';
 import '../lib/watch_park_courses.dart' show WatchParkCourses;
 import '../lib/widgets/elevation_chart.dart';
 import '../lib/widgets/live_run_map.dart' show mapStartZoneColour;
@@ -370,7 +373,7 @@ void main() {
   setUpAll(_ensureEnvironment);
 
   group('ListCard surfaces at the worst case', () {
-    worstCaseTestWidgets('the park cards', (tester, locale) async {
+    worstCaseTestWidgets('the parks map', (tester, locale) async {
       final api = _ParksApi(
         parks: [
           _park(id: 'p1', name: 'Pocahontas State Park'),
@@ -383,6 +386,33 @@ void main() {
       );
       await tester.pumpWidget(
           worstCaseApp(locale: locale, home: ParksScreen(api: api)));
+      await _settle(tester);
+      expect(find.byType(ParksMap), findsOneWidget);
+      expect(find.byKey(const Key('parks-list-button')), findsOneWidget);
+      await _unmount(tester);
+    }, layoutOnly: true);
+
+    worstCaseTestWidgets('the park cards', (tester, locale) async {
+      final search = TextEditingController();
+      addTearDown(search.dispose);
+      await tester.pumpWidget(worstCaseApp(
+        locale: locale,
+        home: ParksListScreen(
+          api: _ParksApi(),
+          parks: [
+            _park(id: 'p1', name: 'Pocahontas State Park'),
+            _park(id: 'p2', name: 'Umstead State Park', region: 'US-NC'),
+          ],
+          coursesByPark: {
+            'p1': [
+              _course(id: 'a', distanceM: 5000),
+              _course(id: 'b', distanceM: 21100),
+            ],
+          },
+          search: search,
+          onSearch: (_) {},
+        ),
+      ));
       await _settle(tester);
       expect(find.byType(Card), findsWidgets);
       await walkScrollable(tester, primaryScrollable(), 'Parks');
@@ -468,7 +498,211 @@ void main() {
   ];
 
   group('ParksScreen', () {
+    final twoParks = [
+      _park(id: 'p1', name: 'Pocahontas State Park'),
+      _park(id: 'p2', name: 'Umstead State Park', region: 'US-NC'),
+    ];
+
+    testWidgets('is a map of parks: a pin per park with its course count, '
+        'and List counts the parks in view', (tester) async {
+      phoneView(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(
+          parks: twoParks,
+          courses: [
+            _course(id: 'a', distanceM: 5000),
+            _course(id: 'b', distanceM: 21100),
+          ],
+        ),
+      )));
+      await _settle(tester);
+      expect(find.byType(ParksMap), findsOneWidget);
+      // Umstead has no centroid and no course in the fixture, so no pin.
+      expect(find.byKey(const ValueKey('parks-map-pin-p1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('parks-map-pin-p2')), findsNothing);
+      expect(
+        find.bySemanticsLabel('Pocahontas State Park, 2 courses'),
+        findsOneWidget,
+      );
+      expect(find.text('List · 1 park'), findsOneWidget);
+      // The intro waits behind How park courses work.
+      expect(find.textContaining('Standing time-trial courses'), findsNothing);
+      expect(find.byKey(const Key('parks-search')), findsOneWidget);
+      expect(find.byKey(const Key('parks-near-me')), findsOneWidget);
+      semantics.dispose();
+      await _unmount(tester);
+    });
+
+    testWidgets('a park with a stored centroid is placed there without '
+        'its courses', (tester) async {
+      phoneView(tester);
+      final api = _ParksApi(
+        parks: [
+          ParkListing(
+            park: ParkRow(
+              id: 'c1',
+              slug: 'centred',
+              name: 'Centred Park',
+              kind: 'park',
+              agency: 'state',
+              regionCode: 'US-VA',
+              countryCode: 'US',
+              timezone: 'America/New_York',
+              centroidLat: 37.3,
+              centroidLng: -77.6,
+              isActive: true,
+              createdAt: DateTime.parse('2026-01-01T00:00:00Z'),
+            ),
+            season: 2026,
+            month: 11,
+          ),
+        ],
+        courses: const [],
+      );
+      await tester.pumpWidget(_host(ParksScreen(api: api)));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('parks-map-pin-c1')), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('How park courses work holds the intro', (tester) async {
+      phoneView(tester);
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(parks: twoParks),
+      )));
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('parks-how-it-works')));
+      await _settle(tester);
+      expect(find.textContaining('Standing time-trial courses'), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('a pin opens its park', (tester) async {
+      phoneView(tester);
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(parks: twoParks),
+      )));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('parks-map-pin-p1')));
+      await _settle(tester);
+      expect(find.byType(ParkScreen), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('a search filters the pins and the count', (tester) async {
+      phoneView(tester);
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(parks: twoParks),
+      )));
+      await _settle(tester);
+      await tester.enterText(find.byKey(const Key('parks-search')), 'Umstead');
+      await tester.pump(const Duration(milliseconds: 300));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('parks-map-pin-p1')), findsNothing);
+      expect(find.text('List · 0 parks'), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('Near me centres the map on the fix', (tester) async {
+      phoneView(tester);
+      var asked = 0;
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(parks: twoParks),
+        locate: () async {
+          asked++;
+          return Position(
+            latitude: 35.9,
+            longitude: -78.7,
+            timestamp: DateTime.utc(2026),
+            accuracy: 10,
+            altitude: 0,
+            altitudeAccuracy: 0,
+            heading: 0,
+            headingAccuracy: 0,
+            speed: 0,
+            speedAccuracy: 0,
+          );
+        },
+      )));
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('parks-near-me')));
+      await _settle(tester);
+      expect(asked, 1);
+      // The map moved away from the Virginia pin to the fix in North Carolina.
+      expect(find.text('List · 0 parks'), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('List opens the parks grouped by region, each a card with '
+        'its courses, count and distance range', (tester) async {
+      phoneView(tester);
+      final api = _ParksApi(
+        parks: twoParks,
+        courses: [
+          _course(id: 'a', distanceM: 5000),
+          _course(id: 'b', distanceM: 21100),
+        ],
+      );
+      await tester.pumpWidget(_host(ParksScreen(api: api)));
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('parks-list-button')));
+      await _settle(tester);
+      expect(find.byType(ParksListScreen), findsOneWidget);
+      Finder inList(Finder f) =>
+          find.descendant(of: find.byType(ParksListScreen), matching: f);
+      expect(inList(find.text('Virginia')), findsOneWidget);
+      expect(inList(find.text('Pocahontas State Park')), findsOneWidget);
+      expect(inList(find.text('State park')), findsNWidgets(2));
+      expect(
+        find.byKey(const ValueKey('parks-park-summary-p1')),
+        findsOneWidget,
+      );
+      expect(find.text('2 courses · 5–21.1 km'), findsOneWidget);
+      expect(find.byType(ParkOverviewMap), findsOneWidget);
+      await tester.scrollUntilVisible(
+        inList(find.text('North Carolina')),
+        200,
+        scrollable: inList(find.byType(Scrollable)).first,
+      );
+      expect(inList(find.text('North Carolina')), findsOneWidget);
+      // Umstead has no courses in the fixture, so no summary and no map.
+      expect(
+        find.byKey(const ValueKey('parks-park-summary-p2')),
+        findsNothing,
+      );
+      await tester.pageBack();
+      await _settle(tester);
+      expect(find.byType(ParksMap), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets("the list's search is the map's", (tester) async {
+      phoneView(tester);
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(parks: twoParks),
+      )));
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('parks-list-button')));
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(const Key('parks-list-search')),
+        'Umstead',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await _settle(tester);
+      Finder inList(Finder f) =>
+          find.descendant(of: find.byType(ParksListScreen), matching: f);
+      expect(inList(find.text('Pocahontas State Park')), findsNothing);
+      expect(inList(find.text('Umstead State Park')), findsOneWidget);
+      await tester.pageBack();
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('parks-map-pin-p1')), findsNothing);
+      await _unmount(tester);
+    });
+
     testWidgets('a trail card reads Trail, whoever runs it', (tester) async {
+      phoneView(tester);
       final api = _ParksApi(
         parks: [
           _park(
@@ -478,21 +712,6 @@ void main() {
             agency: 'other',
           ),
           _park(id: 'p1', name: 'Pocahontas State Park'),
-        ],
-        courses: const [],
-      );
-      await tester.pumpWidget(_host(ParksScreen(api: api)));
-      await _settle(tester);
-      expect(find.text('Trail'), findsOneWidget);
-      expect(find.text('Park'), findsNothing);
-      expect(find.text('State park'), findsOneWidget);
-    });
-
-    testWidgets('a national forest and a wildlife refuge read as such', (
-      tester,
-    ) async {
-      final api = _ParksApi(
-        parks: [
           _park(id: 'f1', name: 'Jefferson National Forest', agency: 'usfs'),
           _park(id: 'r1', name: 'Back Bay Refuge', agency: 'usfws'),
         ],
@@ -500,45 +719,25 @@ void main() {
       );
       await tester.pumpWidget(_host(ParksScreen(api: api)));
       await _settle(tester);
-      expect(find.text('National forest'), findsOneWidget);
-      expect(find.text('Wildlife refuge'), findsOneWidget);
-      expect(find.text('Park'), findsNothing);
-    });
-
-    testWidgets('groups parks under their region, each a card with its '
-        'courses, count and distance range', (tester) async {
-      final api = _ParksApi(
-        parks: [
-          _park(id: 'p1', name: 'Pocahontas State Park'),
-          _park(id: 'p2', name: 'Umstead State Park', region: 'US-NC'),
-        ],
-        courses: [
-          _course(id: 'a', distanceM: 5000),
-          _course(id: 'b', distanceM: 21100),
-        ],
-      );
-      await tester.pumpWidget(_host(ParksScreen(api: api)));
+      await tester.tap(find.byKey(const Key('parks-list-button')));
       await _settle(tester);
-      expect(find.text('Virginia'), findsOneWidget);
-      expect(find.text('North Carolina'), findsOneWidget);
-      expect(find.text('Pocahontas State Park'), findsOneWidget);
-      expect(find.text('State park'), findsNWidgets(2));
-      expect(find.byKey(const Key('parks-intro')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('parks-park-summary-p1')),
-        findsOneWidget,
+      Finder inList(Finder f) =>
+          find.descendant(of: find.byType(ParksListScreen), matching: f);
+      expect(inList(find.text('Trail')), findsOneWidget);
+      expect(inList(find.text('Park')), findsNothing);
+      expect(inList(find.text('State park')), findsOneWidget);
+      await tester.scrollUntilVisible(
+        inList(find.text('Wildlife refuge')),
+        200,
+        scrollable: inList(find.byType(Scrollable)).first,
       );
-      expect(find.text('2 courses · 5–21.1 km'), findsOneWidget);
-      // Umstead has no courses in the fixture, so no summary and no map.
-      expect(
-        find.byKey(const ValueKey('parks-park-summary-p2')),
-        findsNothing,
-      );
-      expect(find.byType(ParkOverviewMap), findsOneWidget);
+      expect(inList(find.text('National forest')), findsOneWidget);
+      expect(inList(find.text('Wildlife refuge')), findsOneWidget);
       await _unmount(tester);
     });
 
     testWidgets('a failed course read still lists the parks', (tester) async {
+      phoneView(tester);
       await tester.pumpWidget(
         _host(
           ParksScreen(
@@ -550,12 +749,21 @@ void main() {
         ),
       );
       await _settle(tester);
-      expect(find.text('Pocahontas State Park'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('parks-list-button')));
+      await _settle(tester);
+      expect(
+        find.descendant(
+          of: find.byType(ParksListScreen),
+          matching: find.text('Pocahontas State Park'),
+        ),
+        findsOneWidget,
+      );
       expect(find.byType(ParkOverviewMap), findsNothing);
       expect(
         find.byKey(const ValueKey('parks-park-summary-p1')),
         findsNothing,
       );
+      await _unmount(tester);
     });
 
     testWidgets('says so when there are no parks', (tester) async {
@@ -605,10 +813,11 @@ void main() {
       for (var i = 1; i < ys.length; i++) {
         expect(ys[i], greaterThan(ys[i - 1]), reason: order[i]);
       }
-      expect(find.text('5 km'), findsOneWidget);
-      expect(find.text('21.1 km'), findsOneWidget);
-      expect(find.text('42.2 km'), findsOneWidget);
-      expect(find.text('50 km'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^5 km · ')), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^21\.1 km · ')), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^42\.2 km · ')), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^50 km · ')), findsOneWidget);
+      expect(find.text('5 km · 45 m climb · Trail'), findsOneWidget);
       expect(find.textContaining('.00 km'), findsNothing);
       expect(find.text('Loop'), findsNothing);
       expect(
@@ -620,9 +829,12 @@ void main() {
       expect(_inCard('shut', find.text('Closed')), findsOneWidget);
       expect(find.text('7 courses'), findsOneWidget);
       expect(find.byKey(const Key('park-overview-map')), findsOneWidget);
-      // The website is its own control, not run into the agency label.
-      expect(find.byKey(const Key('park-website')), findsOneWidget);
       expect(find.text('Virginia · State park'), findsOneWidget);
+      // The website and the notices wait in About this park.
+      expect(find.byKey(const Key('park-website')), findsNothing);
+      await tester.tap(find.text('About this park'));
+      await _settle(tester);
+      expect(find.byKey(const Key('park-website')), findsOneWidget);
       expect(find.byKey(const Key('park-not-affiliated')), findsOneWidget);
       expect(
         find.descendant(
@@ -793,6 +1005,183 @@ void main() {
       expect(find.text('Lake Loop'), findsOneWidget);
       expect(find.byKey(const Key('park-records-failed')), findsNothing);
       expect(find.textContaining('this season'), findsNothing);
+      await _unmount(tester);
+    });
+
+    testWidgets('opens on its map under the one title, then the course cards',
+        (tester) async {
+      phoneView(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(_host(ParkScreen(
+        api: _ParksApi(courses: pocahontasCourses),
+        listing: _park(id: 'p1', name: 'Pocahontas State Park'),
+      )));
+      await _settle(tester);
+      // The bar repeats the name only once the heading scrolls away.
+      expect(find.bySemanticsLabel('Pocahontas State Park'), findsOneWidget);
+      final map = find.byKey(const Key('park-overview-map'));
+      expect(map, findsOneWidget);
+      expect(tester.getSize(map).height, greaterThanOrEqualTo(640 * 0.34));
+      final firstCard = find.byKey(const ValueKey('park-course-shut'));
+      expect(
+        tester.getTopLeft(map).dy,
+        lessThan(tester.getTopLeft(firstCard).dy),
+      );
+      semantics.dispose();
+      await _unmount(tester);
+    });
+
+    testWidgets('a long course name reads whole on its card at 1.3x text', (
+      tester,
+    ) async {
+      phoneView(tester);
+      const long = 'The Lakeside and Ridge Connector Loop Through the Old '
+          'Hardwood Forest';
+      await tester.pumpWidget(_host(
+        ParkScreen(
+          api: _ParksApi(courses: [_course(id: 'long', name: long)]),
+          listing: _park(id: 'p1', name: 'Pocahontas State Park'),
+        ),
+        textScale: 1.3,
+      ));
+      await _settle(tester);
+      final name = find.byKey(const ValueKey('park-course-name-long'));
+      await tester.scrollUntilVisible(name, 200);
+      expect(tester.widget<Text>(name).data, long);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: name, matching: find.byType(RichText)),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(tester.takeException(), isNull);
+      await _unmount(tester);
+    });
+
+    testWidgets('About this park holds the description, the website and both '
+        'notices', (tester) async {
+      tallView(tester);
+      final listing = ParkListing(
+        park: ParkRow(
+          id: 'p1',
+          slug: 'pocahontas',
+          name: 'Pocahontas State Park',
+          description: 'A lake park in the piedmont.',
+          kind: 'park',
+          agency: 'state',
+          regionCode: 'US-VA',
+          countryCode: 'US',
+          timezone: 'America/New_York',
+          websiteUrl: 'https://example.org/park',
+          isActive: true,
+          createdAt: DateTime.parse('2026-01-01T00:00:00Z'),
+        ),
+        season: 2026,
+        month: 11,
+      );
+      await tester.pumpWidget(_host(ParkScreen(api: _ParksApi(), listing: listing)));
+      await _settle(tester);
+      expect(find.text('A lake park in the piedmont.'), findsNothing);
+      expect(find.byKey(const Key('park-not-affiliated')), findsNothing);
+      await tester.tap(find.byKey(const Key('park-about')));
+      await _settle(tester);
+      expect(find.text('A lake park in the piedmont.'), findsOneWidget);
+      expect(find.byKey(const Key('park-website')), findsOneWidget);
+      expect(find.byKey(const Key('park-not-affiliated')), findsOneWidget);
+      expect(find.byKey(const Key('park-group-permit')), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('a card picks its course: the map draws it with Start here, '
+        'and a card offers Run this course and Board', (tester) async {
+      tallView(tester);
+      final api = _ParksApi(
+        courses: [
+          _course(id: 'a', name: 'Lake Loop', routeId: 'route-1'),
+          _course(id: 'b', name: 'Bluff', distanceM: 4000),
+        ],
+        records: const {
+          'a': ParkCourseRecord(season: 2026, timeSeconds: 1500),
+        },
+      );
+      await tester.pumpWidget(_host(ParkScreen(
+        api: api,
+        listing: _park(id: 'p1', name: 'Pocahontas State Park'),
+      )));
+      await _settle(tester);
+      expect(find.byKey(const Key('park-picked-course')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('park-course-a')));
+      await _settle(tester);
+      final picked = find.byKey(const Key('park-picked-course'));
+      expect(picked, findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('park-picked-name'))).data,
+        'Lake Loop',
+      );
+      expect(
+        find.descendant(of: picked, matching: find.text('Fastest in 2026: 25:00')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('park-picked-run')), findsOneWidget);
+      expect(find.byKey(const Key('park-picked-board')), findsOneWidget);
+      expect(find.byKey(const Key('park-overview-start-here-label')), findsOneWidget);
+      expect(
+        tester.widget<ParkCoursesOverviewMap>(find.byType(ParkCoursesOverviewMap)).selected,
+        0,
+      );
+
+      await tester.tap(find.byKey(const Key('park-picked-close')));
+      await _settle(tester);
+      expect(picked, findsNothing);
+      expect(find.byKey(const Key('park-overview-start-here-label')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('park-course-b')));
+      await _settle(tester);
+      // No official route on Bluff, so Board is the one action.
+      expect(find.byKey(const Key('park-picked-run')), findsNothing);
+      await tester.tap(find.byKey(const Key('park-picked-board')));
+      await _settle(tester);
+      expect(find.byType(ParkCourseScreen), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('Run this course on the picked card loads the clipped course '
+        'line into the recorder', (tester) async {
+      tallView(tester);
+      addTearDown(() => pendingArmRunWithRoute.value = null);
+      final api = _ParksApi(courses: [_course(routeId: 'route-1')]);
+      await tester.pumpWidget(_host(ParkScreen(
+        api: api,
+        listing: _park(id: 'p1', name: 'Pocahontas State Park'),
+      )));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('park-course-c1')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('park-picked-run')));
+      await _settle(tester);
+      expect(pendingArmRunWithRoute.value?.id, 'route-1');
+      expect(api.clippedRoutes, ['route-1']);
+      await _unmount(tester);
+    });
+
+    testWidgets('fits a 320x640 phone at 2x text with a course picked', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_host(
+        ParkScreen(
+          api: _ParksApi(courses: pocahontasCourses),
+          listing: _park(id: 'p1', name: 'Pocahontas State Park'),
+        ),
+        textScale: 2,
+      ));
+      await _settle(tester);
+      await tester.ensureVisible(find.byKey(const ValueKey('park-course-shut')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('park-course-shut')));
+      await _settle(tester);
+      expect(find.byKey(const Key('park-picked-course')), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await _unmount(tester);
     });
 
@@ -975,18 +1364,18 @@ void main() {
       await tester.tap(find.text('Lake Loop'));
       await _settle(tester);
       await tester.pump(const Duration(seconds: 1));
-      // The card previews; Open course is what opens the course.
+      // The card picks the course; Board is what opens the course.
       expect(find.byType(ParkCourseScreen), findsNothing);
-      await tester.tap(find.byKey(const Key('park-preview-open')));
+      await tester.tap(find.byKey(const Key('park-picked-board')));
       await _settle(tester);
       await tester.pump(const Duration(seconds: 1));
       expect(find.byType(ParkCourseScreen), findsOneWidget);
       await tester.tap(find.byKey(const Key('park-course-park-link')));
       await _settle(tester);
       await tester.pump(const Duration(seconds: 1));
-      // Back from the course lands on the preview it was opened from.
+      // Back from the course lands on the picked course it was opened from.
       expect(find.byType(ParkCourseScreen), findsNothing);
-      expect(find.byKey(const Key('park-course-preview')), findsOneWidget);
+      expect(find.byKey(const Key('park-picked-course')), findsOneWidget);
       expect(find.byType(ParkScreen), findsOneWidget);
       await _unmount(tester);
     });

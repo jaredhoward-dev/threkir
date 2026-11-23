@@ -15,6 +15,7 @@ import '../park_courses.dart' show regionName;
 import '../preferences.dart' show compactDistanceForPref, formatEffortTime;
 import '../quiet_location.dart';
 import '../screens/park_courses_screen.dart';
+import '../screens/parks_screen.dart';
 
 /// How many parks (and searched courses) the section lists before "See all".
 /// Mirrors `ANY_TIME_LIMIT` on web `/races`.
