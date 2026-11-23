@@ -365,6 +365,102 @@ void main() {
       expect(find.byType(TextField), findsNothing);
     });
 
+    testWidgets('an applied search puts the field on its own row above the '
+        'chips, which stay in reach; the field keeps focus as it lands',
+        (tester) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      var applied = false;
+      late StateSetter set;
+      await _pump(
+        tester,
+        StatefulBuilder(builder: (context, setState) {
+          set = setState;
+          return FilterBar(
+            collapsibleSearch: true,
+            searchApplied: applied,
+            search: AppSearchField(
+                controller: ctl, hint: 'Search', clearTooltip: 'Clear search'),
+            chips: _bands('All', (_) {}).take(2).toList(),
+            filtersLabel: 'Filters',
+            onOpenFilters: () {},
+          );
+        }),
+      );
+      await tester.tap(icon);
+      await tester.pump();
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump();
+      expect(find.byKey(const Key('filter-bar-chips')), findsNothing,
+          reason: 'typed but not yet applied: still one row');
+      set(() => applied = true);
+      await tester.pump();
+      final field = tester.getRect(find.byType(TextField));
+      final chips = tester.getRect(find.byKey(const Key('filter-bar-chips')));
+      expect(chips.top, greaterThanOrEqualTo(field.bottom),
+          reason: 'the chips come back on a row under the field');
+      expect(tester.getRect(filters).center.dy,
+          moreOrLessEquals(chips.center.dy),
+          reason: 'Filters rides with the chips');
+      expect(
+          tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+          isTrue,
+          reason: 'the search landing does not drop the keyboard');
+      await tester.tap(find.byTooltip('Clear search'));
+      set(() => applied = false);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TextField), findsNothing,
+          reason: 'cleared, back to one row');
+      expect(icon, findsOneWidget);
+    });
+
+    testWidgets('an open field with nothing typed folds back when focus '
+        'leaves it', (tester) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      await _pump(tester, bar(ctl));
+      await tester.tap(icon);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TextField), findsOneWidget);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('Back closes an open field before it leaves the page',
+        (tester) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      final seen = <String>[];
+      tester.view.physicalSize = const Size(412, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final nav = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: nav,
+        home: const Scaffold(body: Text('home')),
+      ));
+      nav.currentState!.push(MaterialPageRoute<void>(
+          builder: (_) => Scaffold(body: Column(children: [bar(ctl, seen: seen)]))));
+      await tester.pumpAndSettle();
+      await tester.tap(icon);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsNothing, reason: 'still on the page');
+      expect(find.byType(TextField), findsNothing);
+      expect(ctl.text, isEmpty);
+      expect(seen.last, '');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+    });
+
     testWidgets('a live query keeps the field open', (tester) async {
       final ctl = TextEditingController(text: 'hill');
       addTearDown(ctl.dispose);

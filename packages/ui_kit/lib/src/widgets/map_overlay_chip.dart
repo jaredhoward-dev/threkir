@@ -55,3 +55,57 @@ class MapOverlayChip extends StatelessWidget {
     );
   }
 }
+
+/// A labelled button floating on a map: Near me, another map to open. It
+/// goes in [MapFirstPage.controls], the stack at the map's end edge, where
+/// map apps teach people to look for the locate control.
+///
+/// Raised on the surface colour so it reads over any tile without pulling
+/// the eye the way a filled button would; a toggle ([selected] non-null)
+/// that is on fills with the primary colour, swaps to [selectedIcon] and is
+/// heard as on, so the state never rests on colour alone. The label stays,
+/// because icon-only map actions proved undiscoverable (decisions § 1954),
+/// and wraps to a second line rather than leaving the map. The target is
+/// 48 dp high whatever the drawn height.
+class MapControlButton extends StatelessWidget {
+  const MapControlButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.selected,
+    this.selectedIcon,
+  });
+
+  /// Already localized.
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  /// Null for a plain action; true or false for a toggle.
+  final bool? selected;
+
+  /// The glyph while [selected]; defaults to [icon].
+  final IconData? selectedIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final on = selected ?? false;
+    final button = ElevatedButton.icon(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: on ? scheme.primary : scheme.surface,
+        foregroundColor: on ? scheme.onPrimary : scheme.onSurface,
+        elevation: 2,
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.smPlus),
+        tapTargetSize: MaterialTapTargetSize.padded,
+      ),
+      icon: Icon(on ? selectedIcon ?? icon : icon),
+      label: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+    );
+    if (selected == null) return button;
+    return MergeSemantics(child: Semantics(toggled: on, child: button));
+  }
+}

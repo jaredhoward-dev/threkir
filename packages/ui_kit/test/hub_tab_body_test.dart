@@ -521,6 +521,109 @@ void main() {
           reason: 'with the map the subject again, its search is back');
     });
 
+    // decisions § 2610 (UX critique 6): the row hiding resized the page the
+    // sheet is a fraction of, so the sheet's edge jumped ahead of the thumb.
+    // Over a map it lies on the page, and the sheet keeps below it.
+    testWidgets('over a map the row lies on the page: the sheet\'s edge moves '
+        'exactly with the drag while the row hides', (tester) async {
+      tester.view.physicalSize = const Size(412, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: _Hub(bodies: [
+          HubTabBody(
+            title: 'Explore',
+            collapsesHubTitle: true,
+            filters: FilterBar(
+              search: AppSearchField(
+                  controller: search, hint: 'Search', clearTooltip: 'Clear'),
+            ),
+            body: MapFirstPage(
+              map: const ColoredBox(color: Colors.green),
+              sheet: MapFirstSheet(
+                initialSize: 0.4,
+                minSize: 0.2,
+                maxSize: 0.85,
+                slivers: [
+                  SliverList.list(children: [
+                    for (var i = 0; i < 30; i++)
+                      SizedBox(height: 60, child: Text('route $i')),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ));
+      await tester.pump();
+      await tester.pump();
+      final sheet = find.byKey(const ValueKey('map-first-sheet'));
+      double edge() => tester
+          .getRect(find
+              .descendant(of: sheet, matching: find.byType(Material))
+              .first)
+          .top;
+      final shown = rowHeight(tester);
+      expect(shown, greaterThan(0));
+      expect(edge(), greaterThan(tester.getRect(row).bottom),
+          reason: 'at rest the sheet starts below the row');
+
+      final g = await tester.startGesture(
+          Offset(206, edge() + 30));
+      await g.moveBy(const Offset(0, -20));
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
+        final before = edge();
+        await g.moveBy(const Offset(0, -15));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(edge(), moreOrLessEquals(before - 15),
+            reason: 'step $i: the edge stays under the thumb');
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(rowHeight(tester), 0, reason: 'the raised sheet hid the row');
+      await g.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Back closes a search opened from its icon before the hub '
+        'leaves the tab', (tester) async {
+      final store = HubPrimaryActions();
+      addTearDown(store.dispose);
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: HubTabScope(
+            tab: 'explore',
+            actions: store,
+            child: HubTabBody(
+              title: 'Explore',
+              filters: FilterBar(
+                collapsibleSearch: true,
+                search: AppSearchField(
+                    controller: ctl, hint: 'Search', clearTooltip: 'Clear'),
+                chips: [FilterChip(label: const Text('Routes'), onSelected: (_) {})],
+              ),
+              body: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(store.consumeBack('explore'), isFalse,
+          reason: 'closed, Back is the host\'s');
+      await tester.tap(find.byKey(const Key('filter-bar-search')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TextField), findsOneWidget);
+      expect(store.consumeBack('explore'), isTrue);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TextField), findsNothing);
+      expect(store.consumeBack('explore'), isFalse);
+    });
+
     testWidgets('on its own the row scrolls away with the heading, as before',
         (tester) async {
       await tester.pumpWidget(MaterialApp(

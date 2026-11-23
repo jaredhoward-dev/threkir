@@ -260,6 +260,7 @@ class FilterBar extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(
         AppInsets.gutter, AppSpace.sm, AppInsets.gutter, AppSpace.xs),
     this.collapsibleSearch = false,
+    this.searchApplied,
   }) : assert((filtersLabel == null) == (onOpenFilters == null),
             'filtersLabel and onOpenFilters must be provided together');
 
@@ -310,6 +311,12 @@ class FilterBar extends StatelessWidget {
   /// stays a row of its own.
   final bool collapsibleSearch;
 
+  /// With [collapsibleSearch], whether a search is applied to the list: the
+  /// search that last ran, not the text being typed. While one is, the field
+  /// stays open, as its own row above the chips. Null reads it from the
+  /// field's text.
+  final bool? searchApplied;
+
   /// This bar with [extra] appended to its [trailing], for a host that adds
   /// its own actions to the row.
   FilterBar withTrailing(List<Widget> extra) => extra.isEmpty
@@ -328,6 +335,7 @@ class FilterBar extends StatelessWidget {
           onOpenFilters: onOpenFilters,
           padding: padding,
           collapsibleSearch: collapsibleSearch,
+          searchApplied: searchApplied,
         );
 
   /// An icon button carrying the count as a badge, named by its tooltip and
@@ -402,6 +410,7 @@ class FilterBar extends StatelessWidget {
           ],
           _FoldedSearchRow(
             field: field,
+            applied: searchApplied,
             line: labelledLine,
             pinned: [
               if (onOpenFilters != null) _filtersButton(),
@@ -545,12 +554,17 @@ class FilterBar extends StatelessWidget {
   }
 }
 
-/// [FilterBar]'s chip line with its search folded into an icon: the line
-/// and the icon, or the open field in the line's place. It owns whether the
-/// field is open, so the bar can stay a plain widget its host rebuilds.
+/// [FilterBar]'s chip line with its search folded into an icon. Closed, it
+/// is the line, the icon and the pinned actions on one row. Opened from the
+/// icon with nothing searched yet, the field takes the line's place. While
+/// a search is applied, the field is its own row above the line, so the
+/// chips (a view switch, a filter) stay in reach of a live search. It owns
+/// whether the field is open, so the bar stays a plain widget its host
+/// rebuilds. Back closes an open field before it leaves the page.
 class _FoldedSearchRow extends StatefulWidget {
   const _FoldedSearchRow({
     required this.field,
+    required this.applied,
     required this.line,
     required this.pinned,
     required this.start,
@@ -558,9 +572,12 @@ class _FoldedSearchRow extends StatefulWidget {
   });
 
   final AppSearchField field;
+
+  /// [FilterBar.searchApplied].
+  final bool? applied;
   final Widget line;
 
-  /// Filters and the host's actions, at the row's end either way.
+  /// Filters and the host's actions, at the end of the line's row.
   final List<Widget> pinned;
   final double start;
   final double end;
@@ -574,15 +591,26 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
   final _fieldFocus = FocusNode(debugLabel: 'filter-bar-search-field');
   final _iconFocus = FocusNode(debugLabel: 'filter-bar-search-icon');
 
-  TextEditingController get _text => widget.field.controller;
+  /// The hub tab's control row this sits in, which takes Back for it.
+  late final HubControlsHold? _row = HubTabBody.controlsOf(context);
 
-  /// Open while asked, and always while there is a query to show.
-  bool get _shown => _open || _text.text.isNotEmpty;
+  /// Whether Back was last handed to this row.
+  bool _backRegistered = false;
+
+  TextEditingController get _text => widget.field.controller;
+  FocusNode get _focus => widget.field.focusNode ?? _fieldFocus;
+
+  bool get _live => widget.applied ?? _text.text.isNotEmpty;
+
+  /// Open while asked, and always while a search is applied.
+  bool get _shown => _open || _live;
 
   @override
   void initState() {
     super.initState();
     _text.addListener(_onText);
+    _focus.addListener(_onFocus);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncBack());
   }
 
   @override
@@ -592,11 +620,19 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
       old.field.controller.removeListener(_onText);
       _text.addListener(_onText);
     }
+    final oldFocus = old.field.focusNode ?? _fieldFocus;
+    if (oldFocus != _focus) {
+      oldFocus.removeListener(_onFocus);
+      _focus.addListener(_onFocus);
+    }
+    _syncBack();
   }
 
   @override
   void dispose() {
     _text.removeListener(_onText);
+    _focus.removeListener(_onFocus);
+    if (_backRegistered) _row?.registerBack(this, null);
     _fieldFocus.dispose();
     _iconFocus.dispose();
     super.dispose();
@@ -606,10 +642,28 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
     if (mounted) setState(() {});
   }
 
+  /// Left with nothing typed and nothing applied, the field folds back: an
+  /// empty box held open by a tap elsewhere only covers the chips.
+  void _onFocus() {
+    if (!_focus.hasFocus && _open && _text.text.isEmpty && !_live) {
+      setState(() => _open = false);
+      _syncBack();
+    }
+  }
+
+  void _syncBack() {
+    if (!mounted) return;
+    final want = _shown;
+    if (want == _backRegistered) return;
+    _backRegistered = want;
+    _row?.registerBack(this, want ? _back : null);
+  }
+
   void _openField() {
     setState(() => _open = true);
+    _syncBack();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) (widget.field.focusNode ?? _fieldFocus).requestFocus();
+      if (mounted) _focus.requestFocus();
     });
   }
 
@@ -617,24 +671,31 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
   /// the icon, so a screen reader lands where it came from.
   void _close() {
     setState(() => _open = false);
+    _syncBack();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _iconFocus.requestFocus();
     });
   }
 
+  /// Back does what the field's clear does.
+  void _back() {
+    _text.clear();
+    widget.field.onChanged?.call('');
+    _close();
+  }
+
+  Widget _field() => widget.field.opened(onClose: _close, focusNode: _fieldFocus);
+
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncBack());
     final shown = _shown;
-    return Padding(
-      padding: EdgeInsetsDirectional.only(
-          start: shown ? widget.start : 0, end: widget.end),
+    final lineRow = Padding(
+      key: const ValueKey('folded-search-line'),
+      padding: EdgeInsetsDirectional.only(end: widget.end),
       child: Row(
         children: [
-          Expanded(
-            child: shown
-                ? widget.field.opened(onClose: _close, focusNode: _fieldFocus)
-                : widget.line,
-          ),
+          Expanded(child: widget.line),
           if (!shown)
             IconButton(
               key: const Key('filter-bar-search'),
@@ -646,6 +707,37 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
           ...widget.pinned,
         ],
       ),
+    );
+    // One shape in every state, the field first, so the field keeps its
+    // place (and its focus and keyboard) when a search lands and the chips
+    // come back under it.
+    final Widget body = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (shown)
+          Padding(
+            key: const ValueKey('folded-search-field'),
+            padding: EdgeInsetsDirectional.only(
+                start: widget.start, end: widget.end),
+            child: Row(children: [
+              Expanded(child: _field()),
+              if (!_live) ...widget.pinned,
+            ]),
+          ),
+        if (_live) const SizedBox(height: AppSpace.sm),
+        if (!shown || _live) lineRow,
+      ],
+    );
+    if (_row != null) return body;
+    // Outside a hub tab nothing asks this row first, so it answers Back
+    // itself.
+    return PopScope(
+      canPop: !shown,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: body,
     );
   }
 }

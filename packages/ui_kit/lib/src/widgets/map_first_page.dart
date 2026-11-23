@@ -203,42 +203,59 @@ class _MapFirstPageState extends State<MapFirstPage> {
   Widget _mapArea(BuildContext context) {
     final sheet = widget.sheet;
     final standsOnSystemBar = widget.panel == null && sheet == null;
+    // What lies over the map's top (a hub tab's control row, which slides
+    // away over the map rather than resizing it). The map runs under it; the
+    // sheet and the overlays keep below it, and the sheet is a fraction of
+    // the height left, so the row moving never moves the sheet.
+    final covered = MediaQuery.paddingOf(context).top;
     return LayoutBuilder(builder: (context, box) {
-      final height = box.maxHeight;
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          widget.map,
-          if (sheet == null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                bottom: standsOnSystemBar,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      bottom: standsOnSystemBar ? widget.bottomClearance : 0),
-                  child: _floating(showControls: true),
-                ),
-              ),
-            )
-          else
-            ValueListenableBuilder<double>(
-              valueListenable: _extent,
-              builder: (context, extent, child) => Positioned(
+      final height = box.maxHeight - covered;
+      return MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.map,
+            if (sheet == null)
+              Positioned(
                 left: 0,
                 right: 0,
-                bottom: extent * height,
-                child: _sides(
-                    _floating(showControls: extent <= _kControlsRideLimit)),
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  bottom: standsOnSystemBar,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        bottom: standsOnSystemBar ? widget.bottomClearance : 0),
+                    child: _floating(showControls: true),
+                  ),
+                ),
+              )
+            else
+              ValueListenableBuilder<double>(
+                valueListenable: _extent,
+                builder: (context, extent, child) => Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: extent * height,
+                  child: _sides(
+                      _floating(showControls: extent <= _kControlsRideLimit)),
+                ),
               ),
-            ),
-          for (final overlay in widget.overlays)
-            Positioned(top: 0, left: 0, right: 0, child: _sides(overlay)),
-          if (sheet != null) _sheet(context, sheet),
-        ],
+            for (final overlay in widget.overlays)
+              Positioned(
+                  top: covered, left: 0, right: 0, child: _sides(overlay)),
+            if (sheet != null)
+              Positioned(
+                top: covered,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _sheet(context, sheet),
+              ),
+          ],
+        ),
       );
     });
   }

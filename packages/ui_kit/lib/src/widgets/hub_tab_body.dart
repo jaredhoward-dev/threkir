@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show clampDouble;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/rendering.dart' show RenderProxyBox, ScrollDirection;
 
 import '../motion.dart';
 import 'filter_bar.dart';
@@ -428,6 +428,14 @@ class HubControlsHold {
       if (_state.mounted) _state._hold(owner, hold);
     });
   }
+
+  /// Gives Back to [owner] while [onBack] is set (a search opened from its
+  /// icon closes before Back leaves the tab); null withdraws it.
+  void registerBack(Object owner, VoidCallback? onBack) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) _state._setControlBack(owner, onBack);
+    });
+  }
 }
 
 class _HubControlsScope extends InheritedWidget {
@@ -547,13 +555,31 @@ class _HubTabBodyState extends State<HubTabBody>
   /// the tab. The hub's host asks through [HubPrimaryActions.consumeBack], so
   /// a body never needs a `PopScope` of its own, and a hidden tab's selection
   /// never answers a Back pressed somewhere else.
+  ///
+  /// Otherwise a control in the row with something open (a search opened
+  /// from its icon) takes Back first, while this body is the view showing.
   void _registerBack(HubTabScope scope) {
-    final selection = widget.selection;
-    scope.actions.registerBack(
-      scope.tab,
-      this,
-      selection == null ? null : () => widget.selection?.onClose?.call(),
-    );
+    final VoidCallback? handler;
+    if (widget.selection != null) {
+      handler = () => widget.selection?.onClose?.call();
+    } else if (_controlBacks.isNotEmpty && Visibility.of(context)) {
+      handler = () => _controlBacks.values.last();
+    } else {
+      handler = null;
+    }
+    scope.actions.registerBack(scope.tab, this, handler);
+  }
+
+  /// Back handlers the row's controls have registered, by control.
+  final Map<Object, VoidCallback> _controlBacks = {};
+
+  void _setControlBack(Object owner, VoidCallback? onBack) {
+    if (onBack == null) {
+      _controlBacks.remove(owner);
+    } else {
+      _controlBacks[owner] = onBack;
+    }
+    if (_scope case final scope?) _registerBack(scope);
   }
 
   void _withdraw(HubTabScope scope) {
@@ -763,7 +789,9 @@ class _HubTabBodyState extends State<HubTabBody>
     final taken = after - before;
     if (taken == 0) return;
     _setHidden(after / height);
-    if (handBack && !n.metrics.outOfRange) {
+    // Over a map the row lies on the page rather than resizing it, so
+    // there is nothing to hand back.
+    if (handBack && !widget.collapsesHubTitle && !n.metrics.outOfRange) {
       final position = n.context == null
           ? null
           : Scrollable.maybeOf(n.context!)?.position;
@@ -824,6 +852,54 @@ class _HubTabBodyState extends State<HubTabBody>
     if (changed && hold) _settleTo(0);
   }
 
+  /// The overlay's height with the row fully shown, as last laid out.
+  double _overlayHeight = 0;
+
+  void _onOverlaySize(Size size) {
+    final full = size.height + _hidden * _rowHeight;
+    if ((full - _overlayHeight).abs() < 0.5 || !mounted) return;
+    setState(() => _overlayHeight = full);
+  }
+
+  /// A map's page keeps one height while its row moves: the row and the
+  /// banner lie over the top of the map, and the map's page is told how much
+  /// they cover through the top of `MediaQuery.padding`, which
+  /// [MapFirstPage] keeps its sheet and overlays below. Hiding the row then
+  /// uncovers map rather than resizing the page the sheet is a fraction of,
+  /// so the sheet's edge stays under the thumb (decisions § 2610).
+  Widget _overlaid(Widget? controls) {
+    final media = MediaQuery.of(context);
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: MediaQuery(
+              data: media.copyWith(
+                  padding: media.padding.copyWith(top: _overlayHeight)),
+              child: _content(),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _ReportSize(
+              onSize: _onOverlaySize,
+              child: ColoredBox(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [?controls, ?widget.banner],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// The control row, sliding up under whatever is above it by [_hidden].
   /// Fully hidden, it is out of the pointer, focus and semantics trees, so a
   /// screen reader never lands on a control that is not on screen.
@@ -866,6 +942,9 @@ class _HubTabBodyState extends State<HubTabBody>
               final row? => _hidingControls(row),
               null => null,
             };
+      if (widget.collapsesHubTitle) {
+        return _HubControlsScope(state: this, child: _overlaid(controls));
+      }
       return _HubControlsScope(
         state: this,
         child: Column(
@@ -932,5 +1011,37 @@ class _HubTabBodyState extends State<HubTabBody>
         ),
       ),
     );
+  }
+}
+
+/// Reports its child's size after each layout that changes it.
+class _ReportSize extends SingleChildRenderObjectWidget {
+  const _ReportSize({required this.onSize, required super.child});
+
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderReportSize(onSize);
+
+  @override
+  void updateRenderObject(
+          BuildContext context, _RenderReportSize renderObject) =>
+      renderObject.onSize = onSize;
+}
+
+class _RenderReportSize extends RenderProxyBox {
+  _RenderReportSize(this.onSize);
+
+  ValueChanged<Size> onSize;
+  Size? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (size == _last) return;
+    _last = size;
+    final report = size;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onSize(report));
   }
 }
