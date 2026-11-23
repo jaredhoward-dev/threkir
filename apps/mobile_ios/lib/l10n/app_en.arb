@@ -31427,5 +31427,129 @@
         "example": "3"
       }
     }
+  },
+  "exploreMapViewMenuLabel": "{view}, change view",
+  "@exploreMapViewMenuLabel": {
+    "description": "Accessible name of the Routes view menu button; {view} is the view showing.",
+    "placeholders": {
+      "view": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreMapViewMine": "My routes",
+  "@exploreMapViewMine": {
+    "description": "Routes view menu option: the runner's own and saved routes."
+  },
+  "exploreMapViewRoutes": "Explore routes",
+  "@exploreMapViewRoutes": {
+    "description": "Routes view menu option: public routes on a map."
+  },
+  "exploreMapViewSegments": "Explore segments",
+  "@exploreMapViewSegments": {
+    "description": "Routes view menu option: the segment catalogue on a map."
+  },
+  "exploreMapBackToMap": "Back to the map",
+  "@exploreMapBackToMap": {
+    "description": "Back button on the Routes on the map list page."
+  },
+  "exploreMapListRoutes": "List · {count, plural, one {{count} route} other {{count} routes}}",
+  "@exploreMapListRoutes": {
+    "description": "Pill on the Explore map opening the list of the routes in view.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exploreMapListSegments": "List · {count, plural, one {{count} segment} other {{count} segments}}",
+  "@exploreMapListSegments": {
+    "description": "Pill on the Explore segments map opening the list of the segments in view.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exploreMapListRoutesTitle": "Routes on the map",
+  "@exploreMapListRoutesTitle": {
+    "description": "Title of the list of the routes in the map's view."
+  },
+  "exploreMapListSegmentsTitle": "Segments on the map",
+  "@exploreMapListSegmentsTitle": {
+    "description": "Title of the list of the segments in the map's view."
+  },
+  "exploreMapListSearchLabel": "Search this list",
+  "@exploreMapListSearchLabel": {
+    "description": "Search field on the on-the-map list page; narrows the list by name."
+  },
+  "exploreMapSortLabel": "Sort",
+  "@exploreMapSortLabel": {
+    "description": "Label of the sort control on the on-the-map list page."
+  },
+  "exploreMapSortNearest": "Nearest first",
+  "@exploreMapSortNearest": {
+    "description": "Sort option: closest to the runner first."
+  },
+  "exploreMapSortName": "A–Z",
+  "@exploreMapSortName": {
+    "description": "Sort option: alphabetical by name."
+  },
+  "exploreMapOfficialCourse": "Official course",
+  "@exploreMapOfficialCourse": {
+    "description": "Line under a route's name when an official organiser published it."
+  },
+  "exploreMapWhichRoute": "Which route?",
+  "@exploreMapWhichRoute": {
+    "description": "Title of the list shown when a map tap hits several routes."
+  },
+  "exploreMapWhichSegment": "Which segment?",
+  "@exploreMapWhichSegment": {
+    "description": "Title of the list shown when a map tap hits several segments."
+  },
+  "exploreMapEmptyRoutes": "No routes here",
+  "@exploreMapEmptyRoutes": {
+    "description": "Shown over the Explore map when no route is in view."
+  },
+  "exploreMapEmptyRoutesHint": "Move the map or zoom out to see more.",
+  "@exploreMapEmptyRoutesHint": {
+    "description": "Explains how to find routes when none is in view."
+  },
+  "exploreMapEmptySegments": "No segments here",
+  "@exploreMapEmptySegments": {
+    "description": "Shown over the Explore segments map when no segment is in view."
+  },
+  "exploreMapZoomOut": "Zoom out",
+  "@exploreMapZoomOut": {
+    "description": "Button zooming the map out from an empty view."
+  },
+  "exploreMapNearest": "Nearest: {name}",
+  "@exploreMapNearest": {
+    "description": "Button moving the map to the nearest route or segment; {name} is its name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreMapLoadFailed": "Couldn't load the routes on the map.",
+  "@exploreMapLoadFailed": {
+    "description": "Shown on the Explore map when the routes in view could not be read."
+  },
+  "exploreMapDetails": "Details",
+  "@exploreMapDetails": {
+    "description": "Card button opening a route's or segment's page."
+  },
+  "exploreMapRunThisRoute": "Run this route",
+  "@exploreMapRunThisRoute": {
+    "description": "Card button loading the route into the recorder without starting it."
+  },
+  "exploreMapRunFailed": "Couldn't load this route. Check your connection and try again.",
+  "@exploreMapRunFailed": {
+    "description": "Banner when Run this route could not load the route line."
+  },
+  "exploreMapRunRecording": "Finish the run you're recording first, then load this route.",
+  "@exploreMapRunRecording": {
+    "description": "Banner when Run this route is pressed while a run is already recording."
   }
 }

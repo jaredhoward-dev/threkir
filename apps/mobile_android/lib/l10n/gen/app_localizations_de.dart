@@ -24432,4 +24432,106 @@ class AppLocalizationsDe extends AppLocalizations {
   String runCourseCheckpointPassedLabel(int number) {
     return 'Kontrollpunkt $number, passiert';
   }
+
+  @override
+  String exploreMapViewMenuLabel(String view) {
+    return '$view, Ansicht wechseln';
+  }
+
+  @override
+  String get exploreMapViewMine => 'Meine Routen';
+
+  @override
+  String get exploreMapViewRoutes => 'Routen entdecken';
+
+  @override
+  String get exploreMapViewSegments => 'Segmente entdecken';
+
+  @override
+  String get exploreMapBackToMap => 'Zurück zur Karte';
+
+  @override
+  String exploreMapListRoutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Routen',
+      one: '$count Route',
+    );
+    return 'Liste · $_temp0';
+  }
+
+  @override
+  String exploreMapListSegments(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Segmente',
+      one: '$count Segment',
+    );
+    return 'Liste · $_temp0';
+  }
+
+  @override
+  String get exploreMapListRoutesTitle => 'Routen auf der Karte';
+
+  @override
+  String get exploreMapListSegmentsTitle => 'Segmente auf der Karte';
+
+  @override
+  String get exploreMapListSearchLabel => 'Diese Liste durchsuchen';
+
+  @override
+  String get exploreMapSortLabel => 'Sortieren';
+
+  @override
+  String get exploreMapSortNearest => 'Nächste zuerst';
+
+  @override
+  String get exploreMapSortName => 'A–Z';
+
+  @override
+  String get exploreMapOfficialCourse => 'Offizielle Strecke';
+
+  @override
+  String get exploreMapWhichRoute => 'Welche Route?';
+
+  @override
+  String get exploreMapWhichSegment => 'Welches Segment?';
+
+  @override
+  String get exploreMapEmptyRoutes => 'Hier gibt es keine Routen';
+
+  @override
+  String get exploreMapEmptyRoutesHint =>
+      'Verschiebe die Karte oder zoome heraus, um mehr zu sehen.';
+
+  @override
+  String get exploreMapEmptySegments => 'Hier gibt es keine Segmente';
+
+  @override
+  String get exploreMapZoomOut => 'Herauszoomen';
+
+  @override
+  String exploreMapNearest(String name) {
+    return 'Nächste: $name';
+  }
+
+  @override
+  String get exploreMapLoadFailed =>
+      'Die Routen auf der Karte konnten nicht geladen werden.';
+
+  @override
+  String get exploreMapDetails => 'Details';
+
+  @override
+  String get exploreMapRunThisRoute => 'Diese Route laufen';
+
+  @override
+  String get exploreMapRunFailed =>
+      'Die Route konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.';
+
+  @override
+  String get exploreMapRunRecording =>
+      'Beende zuerst die laufende Aufzeichnung und lade dann diese Route.';
 }

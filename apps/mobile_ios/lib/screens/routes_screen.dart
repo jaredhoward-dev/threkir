@@ -11,23 +11,19 @@ import 'package:ui_kit/ui_kit.dart'
         AppSearchField,
         AppSemanticColors,
         AppSpace,
-        ChoiceChipOption,
         EmptyState,
         FilterBar,
         FilterToggle,
         HubSelection,
         HubTabBody,
         MapControlButton,
-        ListCard,
         ListSummary,
         PrimaryAction,
         SelectionHint,
-        ViewSwitch,
-        buildChoiceChip,
         showFilterSheet;
 
 import '../widgets/grisnir_moments.dart';
-import '../widgets/run_list_tile.dart' show kRunTileLeadingWidth;
+import '../widgets/explore_map_chrome.dart';
 import '../auth_error.dart';
 import '../catalogue_browse.dart' show compareFoldedNames, fold;
 import '../l10n/gen/app_localizations.dart';
@@ -85,15 +81,14 @@ bool shouldShowRoutesLoadMore({
   return remoteHasMore && apiSignedIn;
 }
 
-/// The leading slot of a route row with no thumbnail to show.
-const double kRouteAvatarLeadingWidth = 56;
-
-/// The Routes tab: `Mine · Explore` (issue #1374, owner decision 1).
+/// The Routes tab: My routes, Explore routes and Explore segments, switched
+/// by one menu (issue #1374, owner decision 1; decisions § 2611).
 ///
 /// Mine is the route library, imported and synced routes plus the ones the
-/// runner saved. Explore is public routes, with the discovery maps on its
-/// map, and the segment catalogue, on its `Routes · Segments` chips; the
-/// catalogue was a Fitness tab of its own until then. Each view keeps its own controls and
+/// runner saved, kept a list because people know their own routes by name.
+/// Explore routes is public routes on a map, with the discovery maps on it,
+/// and Explore segments the segment catalogue on a map; the catalogue was a
+/// Fitness tab of its own until then. Each view keeps its own controls and
 /// state while another is showing, and only Mine has a primary action (Build,
 /// or Import with no api client).
 class RoutesScreen extends StatefulWidget {
@@ -781,47 +776,27 @@ class RoutesScreenState extends State<RoutesScreen> {
   }
 
   RoutesExploreChrome _chrome(AppLocalizations l10n) => RoutesExploreChrome(
-        viewBar: _viewBar(l10n),
-        chips: _exploreChips(l10n),
+        menu: RoutesViewMenu(
+          show: _show.value,
+          onSelected: (v) => _show.value = v,
+          floating: true,
+        ),
       );
 
-  /// Mine · Explore, above every view's own controls: a [ViewSwitch], since
-  /// it switches what the tab shows rather than filtering it, on its own row
-  /// so the view's filters keep theirs. No filter joins it; Mine's Starred is
-  /// in Mine's search row ([_starredToggle]).
+  /// My routes · Explore routes · Explore segments, as one menu naming the
+  /// view on screen (decisions § 2611), on Mine's own row above its search.
   FilterBar _viewBar(AppLocalizations l10n) => FilterBar(
         key: const ValueKey('routes-view-bar'),
         padding: const EdgeInsets.fromLTRB(
             AppInsets.gutter, AppSpace.sm, AppInsets.gutter, 0),
-        views: ViewSwitch<bool>(
-          label: l10n.routesViewGroup,
-          options: [
-            ChoiceChipOption(value: false, label: l10n.routesViewMine),
-            ChoiceChipOption(value: true, label: l10n.routesViewExplore),
-          ],
-          selected: _show.value.isExplore,
-          onChanged: (explore) =>
-              _show.value = explore ? _explore : RoutesShow.mine,
+        views: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: RoutesViewMenu(
+            show: _show.value,
+            onSelected: (v) => _show.value = v,
+          ),
         ),
       );
-
-  /// Routes · Segments, leading each Explore view's chip line.
-  List<Widget> _exploreChips(AppLocalizations l10n) => [
-        for (final o in [
-          // An icon each, so the slot the check takes is never a blank in
-          // front of the label.
-          ChoiceChipOption(
-              value: RoutesShow.routes,
-              label: l10n.fitnessRunsRoutes,
-              icon: Icons.route),
-          ChoiceChipOption(
-              value: RoutesShow.segments,
-              label: l10n.runSurfaceTabSegments,
-              icon: Icons.timeline),
-        ])
-          buildChoiceChip<RoutesShow>(
-              context, o, _show.value, (v) => _show.value = v),
-      ];
 
   Widget _buildMine(BuildContext context) {
     final theme = Theme.of(context);
@@ -954,46 +929,32 @@ class RoutesScreenState extends State<RoutesScreen> {
                 final isOfflinePinned =
                     widget.routeStore.isOfflinePinned(route.id);
                 final isSelected = _selected.contains(route.id);
-                return ListCard.row(
+                return ExploreListCard(
+                  key: ValueKey('mine-route-${route.id}'),
                   selecting: _selecting && isOwned,
                   selected: isSelected,
                   onLongPress: isOwned && !_selecting
                       ? () => _enterSelection(route.id)
                       : null,
-                  // A track thumbnail takes the run row's leading width, so
-                  // the two lists line up; the avatar fallback keeps the
-                  // narrower slot, which a long name needs at 1.3x.
-                  leadingWidth: route.waypoints.length >= 2 &&
+                  // The shape on the left and the whole name beside it, the
+                  // card Explore's list draws (decisions § 2611); bookmarked
+                  // rows are other people's, so the preview goes through
+                  // clip_route_for_viewer (decisions § 33).
+                  thumbnail: route.waypoints.length >= 2 &&
                           widget.apiClient != null
-                      ? kRunTileLeadingWidth
-                      : kRouteAvatarLeadingWidth,
-                  leading: route.waypoints.length >= 2 && widget.apiClient != null
-                        ? SizedBox(
-                            height: 40,
-                            // Bookmarked rows are owned by other users — must
-                            // route through clip_route_for_viewer for non-owner
-                            // viewers (decisions §33). Owner branch in
-                            // RouteTrackPreview short-circuits to the raw row
-                            // waypoints, so owned rows still render directly.
-                            child: RouteTrackPreview(
-                              routeId: route.id,
-                              waypoints: route.waypoints,
-                              ownerUserId: route.userId,
-                              api: widget.apiClient!,
-                            ),
-                          )
-                        : SizedBox(
-                            height: 40,
-                            child: CircleAvatar(
-                              backgroundColor:
-                                  theme.colorScheme.secondaryContainer,
-                              child: Icon(
-                                isOwned ? Icons.route : Icons.bookmark,
-                                color: theme.colorScheme.secondary,
-                              ),
-                            ),
-                          ),
-                  title: route.name,
+                      ? RouteTrackPreview(
+                          routeId: route.id,
+                          waypoints: route.waypoints,
+                          ownerUserId: route.userId,
+                          api: widget.apiClient!,
+                          aspect: 1,
+                        )
+                      : Icon(
+                          isOwned ? Icons.route : Icons.bookmark,
+                          color: theme.colorScheme.secondary,
+                        ),
+                  name: route.name,
+                  official: route.official,
                   // Public routes carry a globe beside the name, so the
                   // visibility stays visible without a second subtitle row.
                   badge: route.isPublic
@@ -1005,7 +966,7 @@ class RoutesScreenState extends State<RoutesScreen> {
                       : null,
                   // Distance and elevation, each figure glued to its unit
                   // when a raised text scale wraps it.
-                  subtitle: routeStatsLine(route, unit),
+                  stats: routeStatsLine(route, unit),
                   trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1299,6 +1260,7 @@ class RoutesScreenState extends State<RoutesScreen> {
         key: const ValueKey('routes-heatmap-link'),
         icon: Icons.local_fire_department,
         label: l10n.routesHeatmapTooltip,
+        compact: true,
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1310,6 +1272,7 @@ class RoutesScreenState extends State<RoutesScreen> {
         key: const ValueKey('run-heatmap-link'),
         icon: Icons.person_pin_circle_outlined,
         label: l10n.runHeatmapTitle,
+        compact: true,
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(

@@ -2773,12 +2773,12 @@ void main() {
     test('_toggleBookmark writes a saved_routes reference, not a copy', () {
       final body = _extractMethodBody(
         src,
-        r'Future<void> _toggleBookmark\(cm\.Route route\)\s*async\s*\{',
+        r'Future<void> _toggleBookmark\(String id, String name\)\s*async\s*\{',
       );
-      expect(body.contains('bookmarkRoute(route.id)'), isTrue,
+      expect(body.contains('bookmarkRoute(id)'), isTrue,
           reason: 'saving from Explore must go through '
               'ApiClient.bookmarkRoute, the saved_routes reference.');
-      expect(body.contains('unbookmarkRoute(route.id)'), isTrue,
+      expect(body.contains('unbookmarkRoute(id)'), isTrue,
           reason: 'a second tap must remove the reference via '
               'ApiClient.unbookmarkRoute.');
       expect(body.contains('routeStore'), isFalse,
@@ -5861,7 +5861,10 @@ void main() {
         () {
       // Bodies whose subject is a map: MapFirstPage takes the docked button
       // as its bottomClearance and owns the insets.
-      const mapFirst = {'lib/screens/explore_routes_screen.dart'};
+      const mapFirst = {
+        'lib/screens/explore_routes_screen.dart',
+        'lib/screens/global_segments_screen.dart',
+      };
       final offenders = <String>[];
       for (final f in Directory('lib')
           .listSync(recursive: true)

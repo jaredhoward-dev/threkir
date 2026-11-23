@@ -1,13 +1,13 @@
 import 'package:flutter/widgets.dart';
 
-/// The Routes tab's views: Mine (the runner's own and saved routes), or
-/// Explore on one of its two chips, Routes (public routes, with the discovery
-/// maps on their map) or Segments (the segment catalogue).
+/// The Routes tab's views: Mine (the runner's own and saved routes), Explore
+/// routes (public routes on a map) or Explore segments (the segment catalogue
+/// on a map). One menu names and switches all three (decisions § 2611).
 ///
 /// The segment catalogue was a Fitness tab of its own until issue #1374
-/// (owner decision 1) folded it into Routes, so one value names both the view
-/// and Explore's chip, and a link can open Explore on either through the
-/// shell's channel (`fitness_surface_requests.dart`).
+/// (owner decision 1) folded it into Routes, so one value names the view, and
+/// a link can open it through the shell's channel
+/// (`fitness_surface_requests.dart`).
 enum RoutesShow {
   mine,
   routes,
@@ -16,20 +16,11 @@ enum RoutesShow {
   bool get isExplore => this != RoutesShow.mine;
 }
 
-/// What the Routes tab hands each Explore body: the Mine · Explore row that
-/// sits above the body's own controls, and the Routes · Segments chips that
-/// lead the body's chip line. Null when the body is mounted on its own.
+/// What the Routes tab hands each Explore body: the view menu, which floats
+/// on the body's map. Null when the body is mounted on its own.
 @immutable
 class RoutesExploreChrome {
-  const RoutesExploreChrome({required this.viewBar, required this.chips});
+  const RoutesExploreChrome({required this.menu});
 
-  final Widget viewBar;
-  final List<Widget> chips;
-
-  /// [controls] under the view row.
-  Widget above(Widget controls) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [viewBar, controls],
-      );
+  final Widget menu;
 }

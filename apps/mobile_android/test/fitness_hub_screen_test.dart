@@ -284,15 +284,20 @@ void main() {
         findsNothing,
         reason: 'the FAB is the hub\'s, not drawn inside the tab');
 
-    // Explore has no primary action, and its Segments chip keeps the Park
-    // courses link in its control row.
-    await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    // Explore has no primary action, and Explore segments keeps the Park
+    // courses link on its map. The view menu switches both (decisions § 2611).
+    Future<void> pick(String view) async {
+      await tester.tap(find.byKey(const ValueKey('routes-view-menu')).hitTestable().first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(ValueKey('routes-view-menu-$view')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    await pick('routes');
     expect(find.byType(FloatingActionButton), findsNothing);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Segments'));
-    await tester.pump();
+    await pick('segments');
     expect(find.byType(AppBar), findsOneWidget);
     expect(
         find.descendant(
@@ -392,10 +397,10 @@ void main() {
             .indexOf(FitnessTab.routes));
     expect(find.byType(GlobalSegmentsScreen), findsOneWidget);
     expect(
-        tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Segments'))
-            .selected,
-        isTrue);
+        find.descendant(
+            of: find.byType(GlobalSegmentsScreen),
+            matching: find.text('Explore segments')),
+        findsOneWidget);
     expect(routeCount(tester), 1);
   });
 

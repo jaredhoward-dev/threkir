@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../explore_viewport.dart' show LatLngPoint, ViewBounds;
 import '../heatmap_clustering.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../quiet_location.dart';
@@ -14,44 +15,67 @@ import 'live_run_map.dart'
     show basemapTileLayer, basemapVoidColour, currentBasemapIsDark, currentTileUrl;
 import 'map_attribution.dart';
 
-/// The map behind Routes → Explore (issue #1374): the public routes in view,
-/// as clustered start pins, from the same `discoverable_routes_in_bbox` read
-/// the routes heatmap uses, which places each pin server-side (a non-owner
-/// never receives a route's raw line here).
+/// The map behind Routes → Explore (decisions § 2611): the public routes in
+/// view, as start pins, from the same `discoverable_routes_in_bbox` read the
+/// routes heatmap uses, which places each pin server-side (a non-owner never
+/// receives a route's raw line here).
 ///
-/// It refetches as the camera settles, opens on the world and moves to the
-/// runner once a quiet fix arrives (never prompting), unless they have
-/// already moved the map. A pin opens its route through [onOpen]; a cluster
-/// zooms in on itself.
+/// It refetches as the camera settles and reports what it read through
+/// [onPins]; the page filters them and hands back the ids to draw as
+/// [visibleIds]. It opens on the world and moves to the runner once a quiet
+/// fix arrives (never prompting), unless they have already moved the map.
+/// A pin is a 48 dp target. A tap on one pin reports it through [onTap]; a
+/// tap on a small cluster of overlapping pins reports them all, for the
+/// page's "Which route?"; a big cluster zooms in. With a route selected its
+/// line is drawn, its start marked, and the other pins dim.
 class ExploreRoutesMap extends StatefulWidget {
   const ExploreRoutesMap({
     super.key,
     required this.api,
     required this.controller,
-    required this.onOpen,
+    required this.onPins,
+    required this.onTap,
+    this.visibleIds,
+    this.selectedId,
+    this.selectedLine = const [],
     this.quietFixes = quietPositionFixes,
   });
 
   final ApiClient? api;
 
-  /// Owned by the screen, which moves it when Near me finds the runner.
+  /// Owned by the screen, which moves it for Near me, a search pick and
+  /// Zoom out.
   final MapController controller;
 
-  final void Function(cm.DiscoverableRoutePin pin) onOpen;
+  /// Every read of the routes in view, with the view it was read for.
+  final void Function(List<cm.DiscoverableRoutePin> pins, ViewBounds bounds,
+      LatLngPoint center) onPins;
+
+  /// The pins under a tap: one, or a small cluster's routes.
+  final void Function(List<cm.DiscoverableRoutePin> pins) onTap;
+
+  /// The pins the page's filters keep; null draws every pin read.
+  final Set<String>? visibleIds;
+
+  final String? selectedId;
+  final List<LatLng> selectedLine;
 
   /// Test seam; production centres on [quietPositionFixes].
   final Stream<Position> Function() quietFixes;
 
-  /// This map's credit, for the page to float above its sheet, where the
-  /// map's own bottom edge is covered.
+  /// A cluster this small opens as a list; a bigger one zooms in.
+  static const pickClusterMax = 6;
+
+  /// This map's credit, for the page to float in its column, where the map's
+  /// own bottom edge is covered.
   static Widget credit(BuildContext context) =>
       MapAttribution(darkBasemap: currentBasemapIsDark(context));
 
   @override
-  State<ExploreRoutesMap> createState() => _ExploreRoutesMapState();
+  State<ExploreRoutesMap> createState() => ExploreRoutesMapState();
 }
 
-class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
+class ExploreRoutesMapState extends State<ExploreRoutesMap> {
   static const _clusterRadiusPx = 44.0;
   static const _openZoom = 12.0;
 
@@ -66,6 +90,9 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
   /// The last read of the routes in view failed. Shown on the map with
   /// Retry, never as an empty map (issue #1374 FS-10).
   bool _failed = false;
+
+  /// Whether the camera has had a move since the runner last touched it.
+  bool get moved => _moved;
 
   @override
   void initState() {
@@ -90,36 +117,44 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
 
   void _schedule() {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), _refresh);
+    _debounce = Timer(const Duration(milliseconds: 300), refresh);
   }
 
-  Future<void> _refresh() async {
+  Future<void> refresh() async {
     final api = widget.api;
     if (!_ready || api == null) return;
-    final bounds = widget.controller.camera.visibleBounds;
+    final camera = widget.controller.camera;
+    final b = camera.visibleBounds;
+    final bounds =
+        ViewBounds(west: b.west, south: b.south, east: b.east, north: b.north);
+    final center = LatLngPoint(camera.center.latitude, camera.center.longitude);
     final generation = ++_generation;
     try {
       final pins = await api.fetchDiscoverableRoutesInBbox(
-        minLng: bounds.west,
-        minLat: bounds.south,
-        maxLng: bounds.east,
-        maxLat: bounds.north,
+        minLng: b.west,
+        minLat: b.south,
+        maxLng: b.east,
+        maxLat: b.north,
       );
       if (!mounted || generation != _generation) return;
       setState(() {
         _pins = pins;
         _failed = false;
       });
+      widget.onPins(pins, bounds, center);
     } catch (e) {
-      // L4: the pins are auxiliary to the list in the sheet, so a failed read
-      // keeps the pins already shown and says so on the map.
+      // L4: a failed read keeps the pins already shown and says so on the map.
       debugPrint('explore map routes read failed: ${safeErrorLabel(e)}');
       if (!mounted || generation != _generation) return;
       setState(() => _failed = true);
     }
   }
 
-  void _zoomInto(PinCluster<cm.DiscoverableRoutePin> c) {
+  void _tapCluster(PinCluster<cm.DiscoverableRoutePin> c) {
+    if (c.count <= ExploreRoutesMap.pickClusterMax) {
+      widget.onTap(c.items);
+      return;
+    }
     final camera = widget.controller.camera;
     widget.controller.move(LatLng(c.lat, c.lng), camera.zoom + 2);
   }
@@ -129,6 +164,11 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final darkBasemap = currentBasemapIsDark(context);
+    final visible = widget.visibleIds;
+    final shown = visible == null
+        ? _pins
+        : [for (final p in _pins) if (visible.contains(p.id)) p];
+    final selected = widget.selectedId;
     return FlutterMap(
       key: const ValueKey('explore-routes-map'),
       mapController: widget.controller,
@@ -141,7 +181,7 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
           _ready = true;
           final fix = _pendingFix;
           if (fix != null && !_moved) widget.controller.move(fix, _openZoom);
-          _refresh();
+          refresh();
         },
         onPositionChanged: (_, hasGesture) {
           if (hasGesture) _moved = true;
@@ -150,10 +190,20 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
       ),
       children: [
         basemapTileLayer(urlTemplate: currentTileUrl(context)),
+        if (selected != null && widget.selectedLine.length > 1)
+          PolylineLayer(polylines: [
+            Polyline(
+              points: widget.selectedLine,
+              strokeWidth: 5,
+              color: theme.colorScheme.primary,
+              borderStrokeWidth: 2,
+              borderColor: theme.colorScheme.surface,
+            ),
+          ]),
         Builder(builder: (context) {
           final camera = MapCamera.of(context);
           final clusters = clusterPins<cm.DiscoverableRoutePin>(
-            items: _pins,
+            items: shown,
             latOf: (p) => p.lat,
             lngOf: (p) => p.lng,
             project: (lat, lng) {
@@ -162,6 +212,7 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
             },
             radiusPx: _clusterRadiusPx,
           );
+          final dim = selected != null;
           return MarkerLayer(
             markers: [
               for (final c in clusters)
@@ -172,26 +223,30 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
                   child: c.isCluster
                       ? Semantics(
                           excludeSemantics: true,
-                          onTap: () => _zoomInto(c),
+                          onTap: () => _tapCluster(c),
                           button: true,
                           label: l10n.heatmapRouteCount(c.count),
                           child: GestureDetector(
+                            key: ValueKey('explore-cluster-${c.first.id}'),
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => _zoomInto(c),
-                            child: _Dot(
-                              size: 32,
-                              color: theme.colorScheme.primary,
-                              // Scales down rather than spill out of the
-                              // dot at a large text size.
-                              child: FittedBox(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: Text(
-                                    '${c.count}',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                            color:
-                                                theme.colorScheme.onPrimary),
+                            onTap: () => _tapCluster(c),
+                            child: Opacity(
+                              opacity: dim ? 0.4 : 1,
+                              child: _Dot(
+                                size: 32,
+                                color: theme.colorScheme.primary,
+                                // Scales down rather than spill out of the
+                                // dot at a large text size.
+                                child: FittedBox(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      '${c.count}',
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                              color: theme
+                                                  .colorScheme.onPrimary),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -201,15 +256,24 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
                       // semantics-children: the child draws no text, and keeps its own tap
                       : Semantics(
                           button: true,
+                          selected: c.first.id == selected,
                           label: c.first.name,
                           child: GestureDetector(
                             key: ValueKey('explore-pin-${c.first.id}'),
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => widget.onOpen(c.first),
-                            child: _Dot(
-                              size: 18,
-                              color: theme.colorScheme.primary,
-                            ),
+                            onTap: () => widget.onTap([c.first]),
+                            child: c.first.id == selected
+                                ? _Dot(
+                                    size: 28,
+                                    color: theme.colorScheme.tertiary,
+                                  )
+                                : Opacity(
+                                    opacity: dim ? 0.4 : 1,
+                                    child: _Dot(
+                                      size: 20,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
                           ),
                         ),
                 ),
@@ -220,12 +284,13 @@ class _ExploreRoutesMapState extends State<ExploreRoutesMap> {
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
-              padding: const EdgeInsets.all(8),
+              // Under the page's bar on the map's top edge.
+              padding: const EdgeInsets.fromLTRB(8, 72, 8, 8),
               child: ActionChip(
                 key: const Key('explore-map-load-failed'),
                 avatar: const Icon(Icons.refresh, size: 18),
                 label: Text(l10n.heatmapLoadFailed),
-                onPressed: _refresh,
+                onPressed: refresh,
               ),
             ),
           ),

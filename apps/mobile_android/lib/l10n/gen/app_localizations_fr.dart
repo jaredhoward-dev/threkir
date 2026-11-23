@@ -24496,4 +24496,106 @@ class AppLocalizationsFr extends AppLocalizations {
   String runCourseCheckpointPassedLabel(int number) {
     return 'Point de contrôle $number, franchi';
   }
+
+  @override
+  String exploreMapViewMenuLabel(String view) {
+    return '$view, changer de vue';
+  }
+
+  @override
+  String get exploreMapViewMine => 'Mes itinéraires';
+
+  @override
+  String get exploreMapViewRoutes => 'Explorer les itinéraires';
+
+  @override
+  String get exploreMapViewSegments => 'Explorer les segments';
+
+  @override
+  String get exploreMapBackToMap => 'Retour à la carte';
+
+  @override
+  String exploreMapListRoutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count itinéraires',
+      one: '$count itinéraire',
+    );
+    return 'Liste · $_temp0';
+  }
+
+  @override
+  String exploreMapListSegments(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count segments',
+      one: '$count segment',
+    );
+    return 'Liste · $_temp0';
+  }
+
+  @override
+  String get exploreMapListRoutesTitle => 'Itinéraires sur la carte';
+
+  @override
+  String get exploreMapListSegmentsTitle => 'Segments sur la carte';
+
+  @override
+  String get exploreMapListSearchLabel => 'Rechercher dans cette liste';
+
+  @override
+  String get exploreMapSortLabel => 'Trier';
+
+  @override
+  String get exploreMapSortNearest => 'Les plus proches d\'abord';
+
+  @override
+  String get exploreMapSortName => 'A–Z';
+
+  @override
+  String get exploreMapOfficialCourse => 'Parcours officiel';
+
+  @override
+  String get exploreMapWhichRoute => 'Quel itinéraire ?';
+
+  @override
+  String get exploreMapWhichSegment => 'Quel segment ?';
+
+  @override
+  String get exploreMapEmptyRoutes => 'Aucun itinéraire ici';
+
+  @override
+  String get exploreMapEmptyRoutesHint =>
+      'Déplacez la carte ou dézoomez pour en voir plus.';
+
+  @override
+  String get exploreMapEmptySegments => 'Aucun segment ici';
+
+  @override
+  String get exploreMapZoomOut => 'Dézoomer';
+
+  @override
+  String exploreMapNearest(String name) {
+    return 'Le plus proche : $name';
+  }
+
+  @override
+  String get exploreMapLoadFailed =>
+      'Impossible de charger les itinéraires sur la carte.';
+
+  @override
+  String get exploreMapDetails => 'Détails';
+
+  @override
+  String get exploreMapRunThisRoute => 'Courir cet itinéraire';
+
+  @override
+  String get exploreMapRunFailed =>
+      'Impossible de charger cet itinéraire. Vérifiez votre connexion et réessayez.';
+
+  @override
+  String get exploreMapRunRecording =>
+      'Terminez d\'abord la course en cours d\'enregistrement, puis chargez cet itinéraire.';
 }

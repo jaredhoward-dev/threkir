@@ -2,79 +2,90 @@ import 'dart:async';
 
 import 'package:api_client/api_client.dart';
 import 'package:core_models/core_models.dart' as cm;
-import 'package:core_models/core_models.dart' show DistanceUnit;
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart' show MapController;
+import 'package:flutter_map/flutter_map.dart'
+    show CameraFit, LatLngBounds, MapController;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ui_kit/ui_kit.dart'
-    show
-        ActiveFilter,
-        AppInsets,
-        AppSearchField,
-        AppSpace,
-        EmptyState,
-        ErrorState,
-        FilterBar,
-        HubTabBody,
-        ListCard,
-        MapControlButton,
-        MapFirstPage,
-        MapFirstSheet,
-        StatusPill,
-        StatusPillSize,
-        showFilterSheet;
+    show AppSpace, HubTabBody, MapControlButton, MapFirstPage, showFilterSheet;
 
+import '../auth_error.dart';
+import '../explore_viewport.dart';
 import '../fab_clearance.dart';
 import '../l10n/gen/app_localizations.dart';
 import '../local_route_store.dart';
+import '../main.dart' show pendingArmRunWithRoute;
 import '../official_distance.dart';
 import '../preferences.dart';
 import '../quiet_location.dart';
-import '../routes_views.dart';
 import '../route_surface_label.dart';
-import '../auth_error.dart';
-import '../backend_timeout.dart';
-import '../widgets/error_state.dart';
-import '../park_course_routes.dart';
+import '../routes_views.dart';
+import '../widgets/explore_map_chrome.dart';
 import '../widgets/explore_routes_map.dart';
+import '../widgets/route_track_preview.dart';
 import '../widgets/sign_in_required_state.dart';
-import '../widgets/stale_refresh_banner.dart';
-import 'public_route_screen.dart';
-import 'route_detail_screen.dart';
 import '../widgets/top_banner.dart';
+import 'public_route_screen.dart';
+import 'run_screen.dart' show runRecordingActive;
 
-enum _ExploreMode { search, nearMe }
+/// A public route on the Explore map: the pin's facts, as an [ExplorePin] the
+/// viewport rules can filter, sort and count.
+class ExploreRoutePin extends ExplorePin {
+  const ExploreRoutePin({
+    required super.id,
+    required super.name,
+    required super.lat,
+    required super.lng,
+    super.distanceM,
+    super.surface,
+    super.featured,
+    super.runCount,
+    this.official = false,
+    this.elevationM,
+  });
 
-enum _DistanceFilter { any, short, medium, long, ultra }
+  factory ExploreRoutePin.of(cm.DiscoverableRoutePin p) => ExploreRoutePin(
+        id: p.id,
+        name: p.name,
+        lat: p.lat,
+        lng: p.lng,
+        distanceM: p.distanceM,
+        surface: p.surface,
+        featured: p.featured,
+        runCount: p.runCount,
+        official: p.official,
+        elevationM: p.elevationM,
+      );
 
-enum _SurfaceFilter { any, road, trail, mixed }
+  final bool official;
+  final double? elevationM;
+}
 
-/// Public routes: Routes → Explore on its Routes chip (issue #1374, owner
-/// decision 1).
+/// Public routes: Routes → Explore routes (decisions § 2611).
 ///
-/// Map-first (issue #1374): the public routes in view are pins on a
-/// full-bleed map, and the search results are the list in its sheet, which
-/// opens on the routes themselves (decisions § 2609). Near me is a labelled
-/// button on the map, with the other maps the Routes tab hands it above it,
-/// so the bar keeps only Routes · Segments, the search icon and Filters
-/// (decisions § 2610). The search runs as it is typed, after a short pause;
-/// distance, surface, sort, Featured and tags are in the Filters sheet.
-/// Mounted on its own (a test) it is a page titled Explore Routes.
+/// Map first: under the hub's tabs the map is the page. The view menu, Search
+/// and Filters float on its top edge; Popular routes, Where you've run and
+/// Near me are compact labelled buttons at its end edge above a "List · N
+/// routes" pill; a tapped pin opens a card with the whole name, the Official
+/// line under it, the stats, Run this route, Details and Save. The list of
+/// the routes in view is a page of its own, and a card there returns here
+/// with that route open. Mounted on its own (a test) it is a page titled
+/// Explore Routes.
 class ExploreRoutesScreen extends StatefulWidget {
   final ApiClient? apiClient;
   final LocalRouteStore routeStore;
   final Preferences preferences;
 
-  /// The Routes tab's view row and Explore chips. Null on its own.
+  /// The Routes tab's view menu. Null on its own.
   final RoutesExploreChrome? chrome;
 
   /// The other maps to open (the routes heatmap, the runner's own), as
-  /// map buttons stacked above Near me.
+  /// compact map buttons stacked above Near me.
   final List<Widget> mapButtons;
 
-  /// Opens the route builder, for the empty state's way forward. Null hides
-  /// it.
+  /// Opens the route builder. Kept for the Routes tab's wiring; the map has
+  /// no empty-library state of its own.
   final VoidCallback? onBuildRoute;
 
   /// Test seam for the "Near me" fix. Production callers leave it null and
@@ -97,70 +108,80 @@ class ExploreRoutesScreen extends StatefulWidget {
 }
 
 class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
-  final _searchController = TextEditingController();
   final _map = MapController();
+  final _mapKey = GlobalKey<ExploreRoutesMapState>();
 
-  List<cm.Route> _results = [];
-  late final ParkCourseRouteLookup _parkCourses = ParkCourseRouteLookup((
-    ids,
-  ) async {
-    final api = widget.apiClient;
-    if (api == null) return <String>{};
-    return api.fetchParkCourseRouteIds(ids);
-  });
-  bool _loading = false;
-  bool _hasMore = true;
-  // The search the shown results came from, and the cursor for its next
-  // page. Load more continues THAT search: the cursor is a position in one
-  // sort's order and means nothing under another, and text typed since but not
-  // submitted must not splice a different result set onto this one.
-  Future<cm.KeysetPage<cm.Route>> Function(List<Object?>? after)? _activeSearch;
-  List<Object?>? _resultsNext;
-  String? _error;
+  /// Ticks whenever what the list page shows changes.
+  final _changes = ValueNotifier<int>(0);
 
-  /// Why there is nothing to show that a Retry cannot fix.
-  _Blocked? _blocked;
+  List<ExploreRoutePin> _pins = const [];
+  bool _loaded = false;
+  ViewBounds? _bounds;
+  LatLngPoint? _center;
+  LatLngPoint? _origin;
 
-  /// The text of the search the shown results came from, null for none.
-  /// What the field holds open and which empty state shows read this, not
-  /// the text being typed.
-  String? _appliedQuery;
+  /// Every route seen this visit, for the empty view's nearest one.
+  final Map<String, ExploreRoutePin> _seen = {};
 
-  /// The parameters of the search the shown rows came from, so a refresh of
-  /// the same search keeps them on screen until the new page lands.
-  Object? _shownSearch;
-
-  /// Runs the search a short pause after the last keystroke.
-  Timer? _typing;
-  static const _typingPause = Duration(milliseconds: 400);
-
-  _DistanceFilter _distanceFilter = _DistanceFilter.any;
-  _SurfaceFilter _surfaceFilter = _SurfaceFilter.any;
-  _ExploreMode _mode = _ExploreMode.search;
-  final Set<String> _selectedTags = {};
+  DistanceBucket _distance = DistanceBucket.any;
+  String? _surface;
   bool _featuredOnly = false;
-  String _sort = 'popular';
-  List<String> _popularTags = const [];
+
+  String? _selectedId;
+
+  /// A search pick off the current map, until the map moves to it.
+  ExploreRoutePin? _selectedExtra;
+  List<LatLng> _selectedLine = const [];
+  ({cm.Route? route, List<cm.Waypoint> waypoints, bool isOwner})? _viewable;
+
   Set<String> _bookmarkedIds = const {};
   final Set<String> _bookmarkBusy = {};
-
-  static const _pageSize = 30;
+  bool _locating = false;
+  bool _arming = false;
 
   @override
   void initState() {
     super.initState();
-    // Defer the first search to after the first frame: the signed-out
-    // early-return reads AppLocalizations.of(context), which isn't
-    // available synchronously during initState.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _search();
-    });
-    _loadPopularTags();
     _loadBookmarkedIds();
   }
 
-  /// Ids the viewer has bookmarked, for the row icons. A failure leaves every
-  /// icon unfilled rather than claiming a state nothing confirmed.
+  @override
+  void dispose() {
+    _map.dispose();
+    _changes.dispose();
+    super.dispose();
+  }
+
+  void _update(VoidCallback fn) {
+    setState(fn);
+    _changes.value++;
+  }
+
+  bool get _signedIn => widget.apiClient?.userId != null;
+
+  ViewportFilter get _filter => ViewportFilter(
+        distance: _distance,
+        useMiles: widget.preferences.useMiles,
+        surface: _surface,
+        featuredOnly: _featuredOnly,
+      );
+
+  int get _filterCount =>
+      (_distance != DistanceBucket.any ? 1 : 0) +
+      (_surface != null ? 1 : 0) +
+      (_featuredOnly ? 1 : 0);
+
+  List<ExploreRoutePin> get _shown => filterViewport(_pins, _filter);
+
+  ExploreRoutePin? get _selected {
+    final id = _selectedId;
+    if (id == null) return null;
+    for (final p in _shown) {
+      if (p.id == id) return p;
+    }
+    return _selectedExtra?.id == id ? _selectedExtra : null;
+  }
+
   Future<void> _loadBookmarkedIds() async {
     final api = widget.apiClient;
     if (api == null || api.userId == null) return;
@@ -172,522 +193,249 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     }
   }
 
-  Future<void> _loadPopularTags() async {
+  void _onPins(
+      List<cm.DiscoverableRoutePin> pins, ViewBounds bounds, LatLngPoint center) {
+    _update(() {
+      _pins = [for (final p in pins) ExploreRoutePin.of(p)];
+      for (final p in _pins) {
+        _seen[p.id] = p;
+      }
+      _bounds = bounds;
+      _center = center;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _onTap(List<cm.DiscoverableRoutePin> pins) async {
+    if (pins.length == 1) {
+      _select(pins.first.id);
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
+    final unit = widget.preferences.unit;
+    final id = await showExplorePicker(
+      context,
+      title: l10n.exploreMapWhichRoute,
+      items: [
+        for (final p in pins)
+          (
+            id: p.id,
+            name: p.name,
+            stats: _stats(l10n, ExploreRoutePin.of(p), unit),
+          ),
+      ],
+    );
+    if (id != null && mounted) _select(id);
+  }
+
+  /// Opens [id]'s card and draws its line, read through the viewer-aware
+  /// path so a non-owner gets the privacy-clipped line (decisions § 33).
+  Future<void> _select(String id, {bool frame = false}) async {
     final api = widget.apiClient;
+    _update(() {
+      _selectedId = id;
+      _selectedLine = const [];
+      _viewable = null;
+    });
     if (api == null) return;
     try {
-      final tags = await api.fetchPopularRouteTags();
-      if (mounted) setState(() => _popularTags = tags);
+      final viewable = await loadViewableRoute(api, id);
+      if (!mounted || _selectedId != id) return;
+      final line = [
+        for (final w in viewable.waypoints) LatLng(w.lat, w.lng),
+      ];
+      setState(() {
+        _viewable = viewable;
+        _selectedLine = line;
+      });
+      if (frame && line.length > 1) _frame(line);
     } catch (e) {
-      debugPrint('fetchPopularRouteTags failed: $e');
+      debugPrint('explore route line read failed: $e');
     }
   }
 
-  @override
-  void dispose() {
-    _typing?.cancel();
-    _searchController.dispose();
-    _map.dispose();
-    _parkCourses.dispose();
-    super.dispose();
-  }
-
-  void _checkParkCourses() => unawaited(
-    _parkCourses.check(_results.where((r) => r.official).map((r) => r.id)),
-  );
-
-  /// The sheet's list asks for the next page as it nears its end.
-  bool _onScroll(ScrollNotification n) {
-    if (n.metrics.axis == Axis.vertical &&
-        n.metrics.pixels >= n.metrics.maxScrollExtent - 200 &&
-        !_loading &&
-        _hasMore) {
-      _loadMore();
-    }
-    return false;
-  }
-
-  /// Near me moves the map to the runner too, so the pins and the list
-  /// answer the same question. A map that has not laid out yet stays put.
-  void _moveMapTo(Position pos) {
+  void _frame(List<LatLng> line) {
     try {
-      _map.move(LatLng(pos.latitude, pos.longitude), 12);
+      _map.fitCamera(CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(line),
+        padding: const EdgeInsets.fromLTRB(40, 96, 40, 260),
+        maxZoom: 15,
+      ));
+    } catch (e) {
+      debugPrint('ExploreRoutesScreen: map not ready to frame: $e');
+    }
+  }
+
+  void _close() => _update(() {
+        _selectedId = null;
+        _selectedExtra = null;
+        _selectedLine = const [];
+        _viewable = null;
+      });
+
+  void _zoomOut() {
+    try {
+      final camera = _map.camera;
+      _map.move(camera.center, (camera.zoom - 2).clamp(2, 18).toDouble());
+    } catch (e) {
+      debugPrint('ExploreRoutesScreen: map not ready to zoom: $e');
+    }
+  }
+
+  void _moveTo(LatLngPoint at, double zoom) {
+    try {
+      _map.move(LatLng(at.lat, at.lng), zoom);
     } catch (e) {
       debugPrint('ExploreRoutesScreen: map not ready to move: $e');
     }
   }
 
-  void _openPin(cm.DiscoverableRoutePin pin) {
+  /// Near me moves the map to the runner and makes nearest first the list's
+  /// order.
+  Future<void> _nearMe() async {
+    if (_locating) return;
+    final l10n = AppLocalizations.of(context);
+    setState(() => _locating = true);
+    try {
+      final pos = await (widget.locateFn ?? locateForBrowse)();
+      if (!mounted) return;
+      final at = LatLngPoint(pos.latitude, pos.longitude);
+      _update(() => _origin = at);
+      _moveTo(at, 12);
+    } on LocationPermanentlyDeniedException {
+      if (!mounted) return;
+      showTopBanner(context, l10n.exploreRoutesLocationOff,
+          actionLabel: l10n.runOpenSettings,
+          onAction: () => unawaited(Geolocator.openAppSettings()));
+    } on PermissionDeniedException {
+      if (mounted) {
+        showTopBanner(context, l10n.exploreRoutesLocationPermissionRequired);
+      }
+    } catch (e) {
+      debugPrint('ExploreRoutesScreen near me failed: $e');
+      if (mounted) {
+        showTopBanner(context,
+            l10n.exploreRoutesNearbyLocationUnavailable(browseLocateErrorText(l10n, e)));
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// Loads the route into the recorder without starting it, as a park
+  /// course's Run this course does (decisions § 2604): this is pressed while
+  /// browsing, often far from the start.
+  Future<void> _runThisRoute(String id) async {
+    final api = widget.apiClient;
+    if (api == null || _arming) return;
+    final l10n = AppLocalizations.of(context);
+    if (runRecordingActive.value) {
+      showTopBanner(context, l10n.exploreMapRunRecording);
+      return;
+    }
+    setState(() => _arming = true);
+    try {
+      final viewable = _viewable ?? await loadViewableRoute(api, id);
+      final route = viewable.route;
+      if (route == null || viewable.waypoints.length < 2) {
+        throw StateError('route $id has no line to follow');
+      }
+      if (!mounted) return;
+      pendingArmRunWithRoute.value =
+          publicRouteStartTarget(route, viewable.waypoints);
+    } catch (e) {
+      debugPrint('explore run this route failed: $e');
+      if (!mounted) return;
+      showTopBanner(context, l10n.exploreMapRunFailed,
+          actionLabel: l10n.errorStateRetry, onAction: () => _runThisRoute(id));
+    } finally {
+      if (mounted) setState(() => _arming = false);
+    }
+  }
+
+  void _openDetails(String id) {
     final api = widget.apiClient;
     if (api == null) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PublicRouteScreen(api: api, routeId: pin.id),
-      ),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+          builder: (_) => PublicRouteScreen(api: api, routeId: id),
+        ))
+        .then((_) => _loadBookmarkedIds());
   }
 
-  /// Runs the search the controls describe. A refresh of the search already
-  /// on screen (a pull, Retry, or the same parameters again) keeps its rows
-  /// until the new page lands, and if it fails keeps them under the stale
-  /// banner; only a different search clears them first.
-  Future<void> _search() async {
-    _typing?.cancel();
-    final api = widget.apiClient;
-    if (api == null || api.userId == null) {
-      setState(() {
-        _mode = _ExploreMode.search;
-        _blocked = _Blocked.signedOut;
-      });
-      return;
-    }
-
-    final text = _searchController.text.trim();
-    final query = text.isEmpty ? null : text;
-    final minDistanceM = _minDistance;
-    final maxDistanceM = _maxDistance;
-    final surface = _surfaceValue;
-    final tags = _selectedTags.isEmpty ? null : (_selectedTags.toList()..sort());
-    final featuredOnly = _featuredOnly;
-    final sort = _sort;
-    final params = (query, minDistanceM, maxDistanceM, surface,
-        tags?.join(','), featuredOnly, sort);
-    final same = params == _shownSearch && _mode == _ExploreMode.search;
-    final read0 = ++_reads;
-
-    setState(() {
-      _mode = _ExploreMode.search;
-      _loading = true;
-      _error = null;
-      _blocked = null;
-      _appliedQuery = query;
-      if (!same) {
-        _results = [];
-        _shownSearch = null;
-        _hasMore = true;
-        _activeSearch = null;
-        _resultsNext = null;
-      }
-    });
-
-    Future<cm.KeysetPage<cm.Route>> read(List<Object?>? after) =>
-        api.searchPublicRoutes(
-          query: query,
-          minDistanceM: minDistanceM,
-          maxDistanceM: maxDistanceM,
-          surface: surface,
-          tags: tags,
-          featuredOnly: featuredOnly,
-          sort: sort,
-          limit: _pageSize,
-          after: after,
-        );
-
-    try {
-      final page = await read(null).timeout(kBackendLoadTimeout);
-      if (!mounted || read0 != _reads) return;
-      setState(() {
-        _results = page.rows;
-        _shownSearch = params;
-        _resultsNext = page.next;
-        _activeSearch = read;
-        _hasMore = page.next != null;
-        _loading = false;
-      });
-      _checkParkCourses();
-    } catch (e, s) {
-      debugPrint('ExploreRoutesScreen._search failed: $e\n$s');
-      if (!mounted || read0 != _reads) return;
-      _failed(e);
-    }
-  }
-
-  /// Counts the reads started, so the answer to one a newer read has
-  /// replaced (a keystroke since, Near me since) never lands over it.
-  int _reads = 0;
-
-  /// A read that failed: with rows on screen they stay, under the stale
-  /// banner that tells offline apart; with none, the error says which.
-  void _failed(Object e) {
-    final l10n = AppLocalizations.of(context);
-    if (_results.isNotEmpty) {
-      setState(() => _loading = false);
-      showStaleRefreshBanner(context, e);
-      return;
-    }
-    setState(() {
-      _loading = false;
-      _error = e is TimeoutException
-          ? l10n.exploreRoutesTimeout
-          : classifyAuthError(e) == AuthErrorKind.offline
-              ? l10n.authErrorOffline
-              : _mode == _ExploreMode.nearMe
-                  ? l10n.exploreRoutesNearbyFailed
-                  : l10n.exploreRoutesSearchFailed;
-    });
-  }
-
-  /// Typing searches after a short pause, so the list always shows what
-  /// the field says; emptying the field (its clear) searches at once.
-  void _onSearchTyped(String text) {
-    _typing?.cancel();
-    if (text.trim().isEmpty) {
-      _search();
-      return;
-    }
-    _typing = Timer(_typingPause, _search);
-  }
-
-  Future<void> _loadMore() async {
-    final read = _activeSearch;
-    final after = _resultsNext;
-    if (read == null || after == null || _loading || !_hasMore) return;
-
-    setState(() => _loading = true);
-    try {
-      final page = await read(after);
-      if (!mounted) return;
-      setState(() {
-        _results = cm.appendPage(_results, page.rows, (r) => r.id);
-        _resultsNext = page.next;
-        _hasMore = page.next != null;
-        _loading = false;
-      });
-      _checkParkCourses();
-    } catch (e, s) {
-      debugPrint('ExploreRoutesScreen._loadMore failed: $e\n$s');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _hasMore = false;
-        });
-        showTopBanner(context,
-            AppLocalizations.of(context).exploreRoutesLoadMoreFailed);
-      }
-    }
-  }
-
-  /// Public routes within 50 km of a fix. Like [_search], a refresh while
-  /// Near me is on keeps the rows it has; turning it on clears them.
-  Future<void> _searchNearby() async {
-    _typing?.cancel();
-    final api = widget.apiClient;
-    if (api == null || api.userId == null) {
-      setState(() => _blocked = _Blocked.signedOut);
-      return;
-    }
-    final same = _mode == _ExploreMode.nearMe && _shownSearch == _nearby;
-    final read0 = ++_reads;
-    setState(() {
-      _mode = _ExploreMode.nearMe;
-      _loading = true;
-      _error = null;
-      _blocked = null;
-      _appliedQuery = null;
-      _hasMore = false;
-      _activeSearch = null;
-      _resultsNext = null;
-      if (!same) {
-        _results = [];
-        _shownSearch = null;
-      }
-    });
-
-    final Position pos;
-    try {
-      pos = await (widget.locateFn ?? locateForBrowse)();
-    } on LocationPermanentlyDeniedException {
-      if (mounted && read0 == _reads) {
-        setState(() {
-          _blocked = _Blocked.locationOff;
-          _loading = false;
-        });
-      }
-      return;
-    } on PermissionDeniedException {
-      if (mounted && read0 == _reads) {
-        setState(() {
-          _error = AppLocalizations.of(context)
-              .exploreRoutesLocationPermissionRequired;
-          _loading = false;
-        });
-      }
-      return;
-    } catch (e) {
-      // Caught here, not below: a fix that never arrives is a
-      // TimeoutException too, and the read's catch would call it a backend
-      // timeout.
-      debugPrint('ExploreRoutesScreen._searchNearby locate failed: $e');
-      if (mounted && read0 == _reads) {
-        final l10n = AppLocalizations.of(context);
-        setState(() {
-          _error = l10n.exploreRoutesNearbyLocationUnavailable(
-              browseLocateErrorText(l10n, e));
-          _loading = false;
-        });
-      }
-      return;
-    }
-
-    if (!mounted || read0 != _reads) return;
-    _moveMapTo(pos);
-    try {
-      final results = await api
-          .nearbyPublicRoutes(
-            lat: pos.latitude,
-            lng: pos.longitude,
-            radiusM: 50000,
-            limit: 50,
-          )
-          .timeout(kBackendLoadTimeout);
-      if (!mounted || read0 != _reads) return;
-      setState(() {
-        _results = results;
-        _shownSearch = _nearby;
-        _loading = false;
-      });
-      _checkParkCourses();
-    } catch (e, s) {
-      debugPrint('ExploreRoutesScreen._searchNearby failed: $e\n$s');
-      if (!mounted || read0 != _reads) return;
-      _failed(e);
-    }
-  }
-
-  /// [_shownSearch] for the Near me results.
-  static const _nearby = #nearby;
-
-  static const _metresPerMile = 1609.344;
-
-  // Thresholds in metres — adapt to the user's unit so the buckets feel
-  // natural in both km and miles.
-  List<double> get _thresholds => widget.preferences.useMiles
-      ? [3 * _metresPerMile, 6 * _metresPerMile, 13 * _metresPerMile]
-      : [5000, 10000, 21000];
-
-  double? get _minDistance {
-    final t = _thresholds;
-    switch (_distanceFilter) {
-      case _DistanceFilter.any:
-      case _DistanceFilter.short:
-        return null;
-      case _DistanceFilter.medium:
-        return t[0];
-      case _DistanceFilter.long:
-        return t[1];
-      case _DistanceFilter.ultra:
-        return t[2];
-    }
-  }
-
-  double? get _maxDistance {
-    final t = _thresholds;
-    switch (_distanceFilter) {
-      case _DistanceFilter.any:
-        return null;
-      case _DistanceFilter.short:
-        return t[0];
-      case _DistanceFilter.medium:
-        return t[1];
-      case _DistanceFilter.long:
-        return t[2];
-      case _DistanceFilter.ultra:
-        return null;
-    }
-  }
-
-  String? get _surfaceValue {
-    switch (_surfaceFilter) {
-      case _SurfaceFilter.any:
-        return null;
-      case _SurfaceFilter.road:
-        return 'road';
-      case _SurfaceFilter.trail:
-        return 'trail';
-      case _SurfaceFilter.mixed:
-        return 'mixed';
-    }
-  }
-
-  /// Saving a public route to the library is a `saved_routes` reference, not
-  /// a private copy (decisions § 30), and a second tap removes it — as on web
-  /// and on the route detail screen. This used to clone the route into the
-  /// local store and never rebuild the row, so the bookmark stayed unfilled
-  /// after a save and could not be undone from here.
-  ///
-  /// The icon flips before the request so the tap visibly lands, and flips
-  /// back if it fails. A tap while that row's request is in flight is
-  /// dropped, so a double tap cannot save and then unsave.
-  Future<void> _toggleBookmark(cm.Route route) async {
+  /// Saving a public route is a `saved_routes` reference, not a private copy
+  /// (decisions § 30), and a second tap removes it. The icon flips before the
+  /// request and back if it fails; a tap while one is in flight is dropped.
+  Future<void> _toggleBookmark(String id, String name) async {
     final api = widget.apiClient;
     if (api == null || api.userId == null) return;
-    if (_bookmarkBusy.contains(route.id)) return;
+    if (_bookmarkBusy.contains(id)) return;
     final l10n = AppLocalizations.of(context);
-    final wasSaved = _bookmarkedIds.contains(route.id);
+    final wasSaved = _bookmarkedIds.contains(id);
     setState(() {
-      _bookmarkBusy.add(route.id);
-      _bookmarkedIds = wasSaved
-          ? ({..._bookmarkedIds}..remove(route.id))
-          : {..._bookmarkedIds, route.id};
+      _bookmarkBusy.add(id);
+      _bookmarkedIds =
+          wasSaved ? ({..._bookmarkedIds}..remove(id)) : {..._bookmarkedIds, id};
     });
     try {
       if (wasSaved) {
-        await api.unbookmarkRoute(route.id);
+        await api.unbookmarkRoute(id);
       } else {
-        await api.bookmarkRoute(route.id);
+        await api.bookmarkRoute(id);
       }
       if (!mounted) return;
-      showTopBanner(
-        context,
-        wasSaved
-            ? l10n.exploreRoutesRemoved(route.name)
-            : l10n.exploreRoutesSaved(route.name),
-      );
+      showTopBanner(context,
+          wasSaved ? l10n.exploreRoutesRemoved(name) : l10n.exploreRoutesSaved(name));
     } catch (e) {
       debugPrint('explore bookmark toggle failed: $e');
       if (!mounted) return;
       setState(() {
         _bookmarkedIds = wasSaved
-            ? {..._bookmarkedIds, route.id}
-            : ({..._bookmarkedIds}..remove(route.id));
+            ? {..._bookmarkedIds, id}
+            : ({..._bookmarkedIds}..remove(id));
       });
-      showTopBanner(
-        context,
-        l10n.routeDetailBookmarkFailed(friendlyError(l10n, e)),
-      );
+      showTopBanner(context, l10n.routeDetailBookmarkFailed(friendlyError(l10n, e)));
     } finally {
-      if (mounted) setState(() => _bookmarkBusy.remove(route.id));
+      if (mounted) setState(() => _bookmarkBusy.remove(id));
     }
   }
 
-  void _setNearMe(bool on) => on ? _searchNearby() : _search();
-
-  /// Clears every filter in the sheet, for the empty state's way out.
-  void _clearFilters() => _apply(() {
-        _distanceFilter = _DistanceFilter.any;
-        _surfaceFilter = _SurfaceFilter.any;
-        _sort = 'popular';
-        _featuredOnly = false;
-        _selectedTags.clear();
-      });
-
-  bool get _filtersOn =>
-      _distanceFilter != _DistanceFilter.any ||
-      _surfaceFilter != _SurfaceFilter.any ||
-      _sort != 'popular' ||
-      _featuredOnly ||
-      _selectedTags.isNotEmpty;
-
-  void _clearSearch() {
-    _searchController.clear();
-    _search();
-  }
-
-  /// Applies a filter change, which reruns the search.
-  void _apply(VoidCallback change) {
-    setState(change);
-    _search();
-  }
-
-  Map<_DistanceFilter, String> _distanceLabels(AppLocalizations l10n) {
+  Map<DistanceBucket, String> _distanceLabels(AppLocalizations l10n) {
     final mi = widget.preferences.useMiles;
     return {
-      _DistanceFilter.any: l10n.exploreRoutesDistanceAny,
-      _DistanceFilter.short:
+      DistanceBucket.any: l10n.exploreRoutesDistanceAny,
+      DistanceBucket.short:
           mi ? l10n.exploreRoutesDistanceUnderMi : l10n.exploreRoutesDistanceUnderKm,
-      _DistanceFilter.medium:
+      DistanceBucket.medium:
           mi ? l10n.exploreRoutesDistanceMidMi : l10n.exploreRoutesDistanceMidKm,
-      _DistanceFilter.long:
+      DistanceBucket.long:
           mi ? l10n.exploreRoutesDistanceLongMi : l10n.exploreRoutesDistanceLongKm,
-      _DistanceFilter.ultra:
+      DistanceBucket.ultra:
           mi ? l10n.exploreRoutesDistanceUltraMi : l10n.exploreRoutesDistanceUltraKm,
     };
   }
 
-  Map<_SurfaceFilter, String> _surfaceLabels(AppLocalizations l10n) => {
-        _SurfaceFilter.any: l10n.exploreRoutesSurfaceAny,
-        _SurfaceFilter.road: l10n.exploreRoutesSurfaceRoad,
-        _SurfaceFilter.trail: l10n.exploreRoutesSurfaceTrail,
-        _SurfaceFilter.mixed: l10n.exploreRoutesSurfaceMixed,
+  Map<String?, String> _surfaceLabels(AppLocalizations l10n) => {
+        null: l10n.exploreRoutesSurfaceAny,
+        'road': l10n.exploreRoutesSurfaceRoad,
+        'trail': l10n.exploreRoutesSurfaceTrail,
+        'mixed': l10n.exploreRoutesSurfaceMixed,
       };
 
-  Map<String, String> _sortLabels(AppLocalizations l10n) => {
-        'popular': l10n.exploreRoutesSortMostRun,
-        'newest': l10n.exploreRoutesSortNewest,
-        'featured': l10n.exploreRoutesSortFeatured,
-      };
+  void _clearFilters() => _update(() {
+        _distance = DistanceBucket.any;
+        _surface = null;
+        _featuredOnly = false;
+      });
 
-  /// Search and Filters, after the Routes · Segments chips when the Routes
-  /// tab hosts this. Near me is a button on the map, so turning it on leaves
-  /// this bar exactly as it was; searching or filtering turns it off again,
-  /// and its active filters show only while they apply.
-  FilterBar _filterBar(AppLocalizations l10n) {
-    final nearMe = _mode == _ExploreMode.nearMe;
-    ActiveFilter active(String label, VoidCallback onRemove) => ActiveFilter(
-          label: label,
-          onRemove: onRemove,
-          removeTooltip: l10n.filterBarRemoveFilter(label),
-        );
-    final filters = nearMe
-        ? const <ActiveFilter>[]
-        : [
-            if (_distanceFilter != _DistanceFilter.any)
-              active(_distanceLabels(l10n)[_distanceFilter]!,
-                  () => _apply(() => _distanceFilter = _DistanceFilter.any)),
-            if (_surfaceFilter != _SurfaceFilter.any)
-              active(_surfaceLabels(l10n)[_surfaceFilter]!,
-                  () => _apply(() => _surfaceFilter = _SurfaceFilter.any)),
-            if (_sort != 'popular')
-              active(_sortLabels(l10n)[_sort] ?? l10n.exploreRoutesSort,
-                  () => _apply(() => _sort = 'popular')),
-            if (_featuredOnly)
-              active(l10n.exploreRoutesFeatured,
-                  () => _apply(() => _featuredOnly = false)),
-            for (final t in _selectedTags)
-              active(t, () => _apply(() => _selectedTags.remove(t))),
-          ];
-    return FilterBar(
-      key: const ValueKey('explore-routes-filter-bar'),
-      // Under the map the search is an icon at the chip line's end, so the
-      // controls are one row (decisions § 2610); on its own it keeps a row.
-      collapsibleSearch: widget.chrome != null,
-      searchApplied: !nearMe && _appliedQuery != null,
-      search: AppSearchField(
-        controller: _searchController,
-        hint: l10n.exploreRoutesSearchHint,
-        clearTooltip: l10n.commonClearSearch,
-        onChanged: _onSearchTyped,
-        onSubmitted: (_) => _search(),
-      ),
-      chips: [...?widget.chrome?.chips],
-      activeFilters: filters,
-      filtersLabel: l10n.filterBarFilters,
-      filtersSemanticLabel:
-          filters.isEmpty ? null : l10n.filterBarFiltersCount(filters.length),
-      activeFilterCount: filters.length,
-      onOpenFilters: () => _openFilters(l10n),
-    );
-  }
-
-  /// Near me, the map's own locate control: labelled, at the end of the
-  /// map's button stack nearest the thumb, filled while it is on.
-  Widget _nearMeButton(AppLocalizations l10n) {
-    final on = _mode == _ExploreMode.nearMe;
-    return MapControlButton(
-      key: const ValueKey('explore-near-me'),
-      label: l10n.exploreRoutesModeNearMe,
-      icon: Icons.near_me_outlined,
-      selectedIcon: Icons.near_me,
-      selected: on,
-      onPressed: () => _setNearMe(!on),
-    );
-  }
-
-  Future<void> _openFilters(AppLocalizations l10n) {
+  Future<void> _openFilters(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return showFilterSheet(
       context: context,
       title: l10n.filterBarFilters,
       doneLabel: l10n.filterBarDone,
+      resetLabel: l10n.routesClearFilters,
+      onReset: _clearFilters,
       builder: (sheetContext, setSheet) {
         final theme = Theme.of(sheetContext);
         Widget group(String heading, List<Widget> chips) => Padding(
@@ -702,22 +450,10 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
                     container: true,
                     label: heading,
                     child: Wrap(
-                      spacing: AppSpace.sm,
-                      runSpacing: AppSpace.xs,
-                      children: chips,
-                    ),
+                        spacing: AppSpace.sm, runSpacing: AppSpace.xs, children: chips),
                   ),
                 ],
               ),
-            );
-        Widget pick<T>(T value, T selected, String label, ValueChanged<T> on) =>
-            ChoiceChip(
-              label: Text(label),
-              selected: value == selected,
-              onSelected: (_) {
-                _apply(() => on(value));
-                setSheet(() {});
-              },
             );
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -725,17 +461,25 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           children: [
             group(l10n.filterBarDistance, [
               for (final e in _distanceLabels(l10n).entries)
-                pick(e.key, _distanceFilter, e.value,
-                    (v) => _distanceFilter = v),
+                ChoiceChip(
+                  label: Text(e.value),
+                  selected: _distance == e.key,
+                  onSelected: (_) {
+                    _update(() => _distance = e.key);
+                    setSheet(() {});
+                  },
+                ),
             ]),
             group(l10n.filterBarSurface, [
               for (final e in _surfaceLabels(l10n).entries)
-                pick(e.key, _surfaceFilter, e.value,
-                    (v) => _surfaceFilter = v),
-            ]),
-            group(l10n.filterBarSort, [
-              for (final e in _sortLabels(l10n).entries)
-                pick(e.key, _sort, e.value, (v) => _sort = v),
+                ChoiceChip(
+                  label: Text(e.value),
+                  selected: _surface == e.key,
+                  onSelected: (_) {
+                    _update(() => _surface = e.key);
+                    setSheet(() {});
+                  },
+                ),
             ]),
             group(l10n.exploreRoutesFeatured, [
               FilterChip(
@@ -743,19 +487,10 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
                 label: Text(l10n.exploreRoutesFeatured),
                 selected: _featuredOnly,
                 onSelected: (v) {
-                  _apply(() => _featuredOnly = v);
+                  _update(() => _featuredOnly = v);
                   setSheet(() {});
                 },
               ),
-              for (final t in _popularTags)
-                FilterChip(
-                  label: Text(t),
-                  selected: _selectedTags.contains(t),
-                  onSelected: (v) {
-                    _apply(() => v ? _selectedTags.add(t) : _selectedTags.remove(t));
-                    setSheet(() {});
-                  },
-                ),
             ]),
           ],
         );
@@ -763,297 +498,254 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  /// Finds a route anywhere, not only in view, and opens it on the map.
+  Future<void> _openSearch() async {
+    final api = widget.apiClient;
+    if (api == null) return;
     final l10n = AppLocalizations.of(context);
     final unit = widget.preferences.unit;
-    final bar = _filterBar(l10n);
-    return HubTabBody(
-      title: l10n.exploreRoutesTitle,
-      // A map never scrolls the hub's large title away; at a large text size
-      // it kept a sixth of a small phone from the map (decisions § 2610).
-      collapsesHubTitle: true,
-      filters: widget.chrome?.above(bar) ?? bar,
-      onRefresh: _refresh,
-      // The map keeps the drags that start on it and the Fitness hub swipes
-      // from the controls and the sheet, so Explore is a map inside the
-      // hub's pages rather than a pushed screen (conventions § Mobile
-      // map-first pages).
-      body: MapFirstPage(
-        map: ExploreRoutesMap(
-          api: widget.apiClient,
-          controller: _map,
-          onOpen: _openPin,
-        ),
-        controls: [...widget.mapButtons, _nearMeButton(l10n)],
-        attribution: ExploreRoutesMap.credit(context),
-        bottomClearance: DockedFabInset.of(context),
-        // Snaps between a peek (the map), half (the map and the first few
-        // routes) and nearly full (the list), so a release never leaves the
-        // map as a sliver over a list that shows one route.
-        sheet: MapFirstSheet(
-          initialSize: 0.55,
-          minSize: 0.2,
-          maxSize: 0.85,
-          snapSizes: const [0.55],
-          onScroll: _onScroll,
-          slivers: [
-            ..._bodySlivers(theme, unit),
-            // The gap listEndClearance keeps under every other list; the
-            // sheet itself already adds the docked button and the bar.
-            const SliverToBoxAdapter(child: SizedBox(height: AppSpace.md)),
-          ],
-        ),
-      ),
+    final found = <String, cm.Route>{};
+    final bounds = distanceBucketBounds(_distance, widget.preferences.useMiles);
+    final id = await showExploreSearch(
+      context,
+      hint: l10n.exploreRoutesSearchHint,
+      emptyText: l10n.exploreRoutesEmptyNoMatch,
+      failedText: l10n.exploreRoutesSearchFailed,
+      search: (q) async {
+        final page = await api.searchPublicRoutes(
+          query: q,
+          minDistanceM: bounds.min,
+          maxDistanceM: bounds.max,
+          surface: _surface,
+          featuredOnly: _featuredOnly,
+          sort: 'popular',
+          limit: 20,
+        );
+        for (final r in page.rows) {
+          found[r.id] = r;
+        }
+        return [
+          for (final r in page.rows)
+            (
+              id: r.id,
+              name: r.name,
+              meta: UnitFormat.distance(
+                  routeDisplayDistanceM(
+                      r.distanceMetres, r.officialDistanceMetres),
+                  unit),
+            ),
+        ];
+      },
     );
+    if (id == null || !mounted) return;
+    final r = found[id];
+    if (r != null) {
+      _selectedExtra = ExploreRoutePin(
+        id: r.id,
+        name: r.name,
+        lat: 0,
+        lng: 0,
+        distanceM: r.distanceMetres,
+        surface: r.surface ?? '',
+        featured: r.featured,
+        runCount: r.runCount,
+        official: r.official,
+        elevationM: r.elevationGainMetres,
+      );
+    }
+    await _select(id, frame: true);
   }
 
-  Future<void> _refresh() =>
-      _mode == _ExploreMode.nearMe ? _searchNearby() : _search();
-
-  /// Why the search that ran found nothing, in one sentence, with the one
-  /// thing that would change it.
-  Widget _emptyState(AppLocalizations l10n) {
-    if (_mode == _ExploreMode.nearMe) {
-      return EmptyState(
-        key: const ValueKey('explore-empty-nearby'),
-        icon: Icons.near_me,
-        title: l10n.exploreRoutesEmptyNearby,
-        ctaLabel: l10n.exploreRoutesSearchEverywhere,
-        ctaIcon: Icons.public,
-        onCta: () => _setNearMe(false),
-      );
-    }
-    if (_appliedQuery != null) {
-      return EmptyState(
-        key: const ValueKey('explore-empty-search'),
-        icon: Icons.search_off,
-        title: l10n.exploreRoutesEmptyNoMatch,
-        ctaLabel: l10n.commonClearSearch,
-        ctaIcon: Icons.close,
-        onCta: _clearSearch,
-      );
-    }
-    if (_filtersOn) {
-      return EmptyState(
-        key: const ValueKey('explore-empty-filtered'),
-        icon: Icons.filter_alt_off,
-        title: l10n.exploreRoutesEmptyFiltered,
-        ctaLabel: l10n.routesClearFilters,
-        ctaIcon: Icons.filter_alt_off,
-        onCta: _clearFilters,
-      );
-    }
-    final build = widget.onBuildRoute;
-    return EmptyState(
-      key: const ValueKey('explore-empty-none'),
-      icon: Icons.explore,
-      title: l10n.exploreRoutesEmptyNone,
-      ctaLabel: build == null ? null : l10n.addRunBuildRoute,
-      ctaIcon: Icons.edit_road,
-      onCta: build,
-    );
-  }
-
-  List<Widget> _bodySlivers(ThemeData theme, DistanceUnit unit) {
+  Future<void> _openList() async {
     final l10n = AppLocalizations.of(context);
-    switch (_blocked) {
-      case _Blocked.signedOut:
-        return [
-          SliverToBoxAdapter(
-            child: SignInRequiredState(
-              api: widget.apiClient,
-              message: l10n.exploreRoutesSignInToExplore,
-              onSignedIn: _refresh,
-            ),
-          ),
-        ];
-      case _Blocked.locationOff:
-        return [
-          SliverToBoxAdapter(
-            child: ErrorState(
-              key: const ValueKey('explore-location-off'),
-              icon: Icons.location_disabled,
-              message: l10n.exploreRoutesLocationOff,
-              retryLabel: l10n.runOpenSettings,
-              onRetry: () => unawaited(Geolocator.openAppSettings()),
-            ),
-          ),
-        ];
-      case null:
-    }
-    if (_error != null) {
-      return [
-        SliverToBoxAdapter(
-          child: AppErrorState(message: _error!, onRetry: _refresh),
-        ),
-      ];
-    }
-
-    if (_results.isEmpty && !_loading) {
-      return [SliverToBoxAdapter(child: _emptyState(l10n))];
-    }
-
-    return [
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(
-            AppInsets.gutter, AppSpace.sm, AppInsets.gutter, 0),
-        sliver: SliverList.separated(
-          separatorBuilder: (_, _) =>
-              const SizedBox(height: AppInsets.itemGap),
-          itemCount: _results.length + (_loading ? 1 : 0),
-          itemBuilder: (context, index) {
-            if (index >= _results.length) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-            }
-
-            final route = _results[index];
-
-            return _RouteCard(
-              key: ValueKey('explore-route-${route.id}'),
-              parkCourses: _parkCourses,
-              route: route,
-              unit: unit,
-              theme: theme,
-              saved: _bookmarkedIds.contains(route.id),
-              onTap: () async {
-                await Navigator.push<void>(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => RouteDetailScreen(
-                      route: route,
-                      routeStore: widget.routeStore,
-                      preferences: widget.preferences,
-                      apiClient: widget.apiClient,
-                    ),
+    final unit = widget.preferences.unit;
+    final api = widget.apiClient;
+    final id = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ExploreListPage<ExploreRoutePin>(
+          title: l10n.exploreMapListRoutesTitle,
+          changes: _changes,
+          items: () => _shown,
+          sorts: () => [
+            if (_origin != null) ExploreSort.nearest,
+            ExploreSort.mostRun,
+            ExploreSort.name,
+          ],
+          sortLabel: (s) => exploreSortLabel(l10n, s as ExploreSort),
+          initialSort: defaultSort(_origin),
+          sortBy: (items, s) => sortViewport(items, s as ExploreSort, _origin),
+          onOpenFilters: _openFilters,
+          filterCount: () => _filterCount,
+          searchHint: l10n.exploreMapListSearchLabel,
+          emptyText: l10n.exploreMapEmptyRoutes,
+          cardBuilder: (context, p, onTap) => ExploreListCard(
+            key: ValueKey('explore-list-card-${p.id}'),
+            name: p.name,
+            official: p.official,
+            stats: _stats(l10n, p, unit),
+            onTap: onTap,
+            thumbnail: api == null
+                ? const Icon(Icons.route)
+                : RouteTrackPreview(
+                    routeId: p.id,
+                    waypoints: const [],
+                    ownerUserId: '',
+                    api: api,
+                    aspect: 1,
                   ),
-                );
-                // The detail screen carries its own bookmark toggle.
-                _loadBookmarkedIds();
-              },
-              onToggleBookmark: () => _toggleBookmark(route),
-            );
-          },
+          ),
         ),
       ),
-    ];
+    );
+    if (id == null || !mounted) return;
+    await _select(id, frame: true);
   }
-}
 
-/// Why Explore has nothing to show that a Retry cannot fix.
-enum _Blocked { signedOut, locationOff }
-
-/// One public route: its name on up to two lines across the card, then its
-/// distance, climb, surface and how often it has been run on one line, the
-/// way Segments and Mine read theirs.
-///
-/// The card used to lead with an 80 dp slot for a track thumbnail. Search and
-/// Near me read the `public_routes` view, which carries no waypoints, so that
-/// slot only ever drew a surface glyph, and the name it squeezed was cut after
-/// a word or two on a phone (decisions § 2609).
-class _RouteCard extends StatelessWidget {
-  final cm.Route route;
-  final DistanceUnit unit;
-  final ThemeData theme;
-  final bool saved;
-  final VoidCallback onTap;
-  final VoidCallback onToggleBookmark;
-  final ParkCourseRouteLookup parkCourses;
-
-  const _RouteCard({
-    super.key,
-    required this.route,
-    required this.parkCourses,
-    required this.unit,
-    required this.theme,
-    required this.saved,
-    required this.onTap,
-    required this.onToggleBookmark,
-  });
-
-  /// "26.22 mi · 2,198 ft ↑ · Trail · 14 runs". Every space inside a fact is
-  /// non-breaking, so a raised text scale wraps the line between facts and
-  /// never between a number and its unit.
-  String _facts(AppLocalizations l10n) {
+  /// "12.50 km · 80 m ↑ · Trail". Every space inside a fact is non-breaking,
+  /// so a raised text scale wraps between facts, never inside one.
+  String _stats(AppLocalizations l10n, ExploreRoutePin p, cm.DistanceUnit unit) {
     String glued(String s) => s.replaceAll(' ', ' ');
+    final climb = p.elevationM;
     return [
-      glued(UnitFormat.distance(
-          routeDisplayDistanceM(
-              route.distanceMetres, route.officialDistanceMetres),
-          unit)),
-      if (route.elevationGainMetres > 0)
-        glued('${UnitFormat.elevation(route.elevationGainMetres, unit)} ↑'),
-      if (route.surface case final surface?) routeSurfaceLabel(l10n, surface),
-      if (route.runCount > 0) glued(l10n.routeDetailRunCount(route.runCount)),
+      glued(UnitFormat.distance(p.distanceM, unit)),
+      if (climb != null && climb > 0)
+        glued('${UnitFormat.elevation(climb, unit)} ↑'),
+      if (p.surface.isNotEmpty) routeSurfaceLabel(l10n, p.surface),
     ].join(' · ');
   }
 
+  Widget? _overlay(AppLocalizations l10n) {
+    if (!_loaded || _selected != null) return null;
+    final shown = _shown;
+    if (shown.isNotEmpty) return null;
+    final center = _center;
+    final bounds = _bounds;
+    final elsewhere = filterViewport(_seen.values, _filter).where(
+        (p) => bounds == null || !inBounds(p.lat, p.lng, bounds));
+    final nearest = center == null ? null : nearestTo(elsewhere, center);
+    return ExploreEmptyOverlay(
+      title: l10n.exploreMapEmptyRoutes,
+      onZoomOut: _zoomOut,
+      onClearFilters: _filter.active ? _clearFilters : null,
+      nearestName: nearest?.name,
+      onNearest: nearest == null
+          ? null
+          : () {
+              _moveTo(LatLngPoint(nearest.lat, nearest.lng), 13);
+              _select(nearest.id);
+            },
+    );
+  }
+
+  Widget _footer(AppLocalizations l10n) {
+    final selected = _selected;
+    if (selected == null) {
+      return ExploreListPill(
+        label: l10n.exploreMapListRoutes(_shown.length),
+        onPressed: _openList,
+      );
+    }
+    final saved = _bookmarkedIds.contains(selected.id);
+    final unit = widget.preferences.unit;
+    return ExploreSelectedCard(
+      key: ValueKey('explore-card-${selected.id}'),
+      name: selected.name,
+      official: selected.official,
+      stats: _stats(l10n, selected, unit),
+      onClose: _close,
+      actions: [
+        FilledButton.icon(
+          key: const ValueKey('explore-card-run'),
+          onPressed: _arming ? null : () => _runThisRoute(selected.id),
+          icon: const Icon(Icons.directions_run),
+          label: Text(l10n.exploreMapRunThisRoute),
+        ),
+        OutlinedButton(
+          key: const ValueKey('explore-card-details'),
+          onPressed: () => _openDetails(selected.id),
+          child: Text(l10n.exploreMapDetails),
+        ),
+        if (_signedIn)
+          IconButton(
+            key: const ValueKey('explore-card-save'),
+            onPressed: _bookmarkBusy.contains(selected.id)
+                ? null
+                : () => _toggleBookmark(selected.id, selected.name),
+            tooltip: saved
+                ? l10n.exploreRoutesRemoveFromLibrary
+                : l10n.exploreRoutesSaveToLibrary,
+            icon: Icon(saved ? Icons.bookmark : Icons.bookmark_border),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return ListCard.row(
-      margin: EdgeInsets.zero,
-      dense: true,
-      onTap: onTap,
-      title: route.name,
-      badge: route.official || route.featured
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (route.official)
-                  OfficialRouteBadge(routeId: route.id, lookup: parkCourses),
-                if (route.featured)
-                  Padding(
-                    padding:
-                        const EdgeInsetsDirectional.only(start: AppSpace.xs),
-                    child: Icon(
-                      Icons.star,
-                      size: 16,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-              ],
-            )
-          : null,
-      subtitle: _facts(l10n),
-      // Four facts at 2x text on a 320 dp phone take three lines; at two the
-      // run count was the one cut.
-      subtitleMaxLines: 3,
-      meta: route.tags.isEmpty
-          ? null
-          : Padding(
-              padding: const EdgeInsets.only(top: AppSpace.xs),
-              child: Wrap(
-                spacing: AppSpace.xs,
-                runSpacing: AppSpace.xs,
-                children: [
-                  for (final t in route.tags.take(4))
-                    StatusPill(
-                      label: t,
-                      foreground: theme.colorScheme.onSurfaceVariant,
-                      fill: theme.colorScheme.surfaceContainerHighest,
-                      size: StatusPillSize.compact,
-                    ),
-                ],
-              ),
-            ),
-      trailing: IconButton(
-        icon: Icon(
-          saved ? Icons.bookmark : Icons.bookmark_border,
-          color: saved
-              ? theme.colorScheme.primary
-              : theme.colorScheme.onSurfaceVariant,
+    final api = widget.apiClient;
+    final overlay = _signedIn ? _overlay(l10n) : null;
+    return HubTabBody(
+      title: l10n.exploreRoutesTitle,
+      // A map never scrolls the hub's large title away (decisions § 2610).
+      collapsesHubTitle: true,
+      body: MapFirstPage(
+        map: ExploreRoutesMap(
+          key: _mapKey,
+          api: api,
+          controller: _map,
+          onPins: _onPins,
+          onTap: _onTap,
+          visibleIds: {for (final p in _shown) p.id},
+          selectedId: _selectedId,
+          selectedLine: _selectedLine,
         ),
-        tooltip: saved
-            ? l10n.exploreRoutesRemoveFromLibrary
-            : l10n.exploreRoutesSaveToLibrary,
-        onPressed: onToggleBookmark,
+        overlays: [
+          ExploreTopBar(
+            menu: widget.chrome?.menu ?? const SizedBox.shrink(),
+            searchLabel: l10n.exploreRoutesSearchHint,
+            onSearch: _openSearch,
+            filtersLabel: _filterCount > 0
+                ? l10n.filterBarFiltersCount(_filterCount)
+                : l10n.filterBarFilters,
+            filterCount: _filterCount,
+            onFilters: () => _openFilters(context),
+          ),
+          if (overlay != null)
+            Padding(padding: const EdgeInsets.only(top: 64), child: overlay),
+        ],
+        controls: [
+          ...widget.mapButtons,
+          MapControlButton(
+            key: const ValueKey('explore-near-me'),
+            label: l10n.exploreRoutesModeNearMe,
+            icon: Icons.near_me_outlined,
+            selectedIcon: Icons.near_me,
+            selected: _origin != null,
+            compact: true,
+            onPressed: _nearMe,
+          ),
+        ],
+        // Signed out, the map stays and the way forward takes the card's
+        // place.
+        footer: _signedIn
+            ? _footer(l10n)
+            : Material(
+                color: Theme.of(context).colorScheme.surface,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(20),
+                child: SignInRequiredState(
+                  api: api,
+                  message: l10n.exploreRoutesSignInToExplore,
+                  onSignedIn: () async {
+                    setState(() {});
+                    await _loadBookmarkedIds();
+                    await _mapKey.currentState?.refresh();
+                  },
+                ),
+              ),
+        attribution: ExploreRoutesMap.credit(context),
+        bottomClearance: DockedFabInset.of(context),
       ),
     );
   }

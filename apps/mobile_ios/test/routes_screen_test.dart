@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ui_kit/ui_kit.dart' show MapControlButton;
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/local_route_store.dart';
 import '../lib/preferences.dart';
@@ -162,6 +163,17 @@ final _routeList = find.byElementPredicate(
       !isNestedScrollOuter(e),
 );
 
+/// Opens the view menu and picks [view] (decisions § 2611).
+Future<void> _pickView(WidgetTester tester, RoutesShow view) async {
+  await tester.tap(
+      find.byKey(const ValueKey('routes-view-menu')).hitTestable().first);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.byKey(ValueKey('routes-view-menu-${view.name}')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 void main() {
   worstCaseTestWidgets('the route cards', (tester, locale) async {
     final prefs = await _makePrefs();
@@ -242,22 +254,18 @@ void main() {
       final controls = find.byKey(const ValueKey('map-first-controls'));
       expect(find.descendant(of: controls, matching: routesMap), findsOneWidget);
       expect(find.descendant(of: controls, matching: runMap), findsOneWidget);
-      // On the map, not heading the list in its sheet (decisions § 2609).
-      final sheet = find.byKey(const ValueKey('map-first-sheet'));
-      expect(find.descendant(of: sheet, matching: routesMap), findsNothing);
-      expect(find.descendant(of: sheet, matching: runMap), findsNothing);
-      final sheetEdge = tester
-          .getRect(find.descendant(of: sheet, matching: find.byType(Material))
-              .first)
-          .top;
-      expect(tester.getRect(routesMap).bottom, lessThanOrEqualTo(sheetEdge),
-          reason: 'the heatmaps float above the sheet\'s top edge');
+      // Compact, so three stack over a map that is the whole page
+      // (decisions § 2611).
+      expect(
+          tester
+              .widget<MapControlButton>(find.ancestor(
+                  of: routesMap, matching: find.byType(MapControlButton)))
+              .compact,
+          isTrue);
 
       await _pump(tester, prefs: prefs, initialShow: RoutesShow.mine);
       await tester.pump();
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
-      await tester.pump();
+      await _pickView(tester, RoutesShow.routes);
       expect(find.widgetWithText(ElevatedButton, 'Popular routes'),
           findsNothing);
       expect(find.widgetWithText(ElevatedButton, "Where you've run"),
@@ -886,8 +894,8 @@ void main() {
         }
       });
 
-      testWidgets('at ${scale}x the view switch and Explore chips sit on screen',
-          (tester) async {
+      testWidgets('at ${scale}x the view menu, Search and Filters sit on the '
+          'map\'s top edge, on screen', (tester) async {
         usePhone(tester);
         final prefs = await _makePrefs();
         await _pump(tester,
@@ -897,26 +905,22 @@ void main() {
             textScale: scale);
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'no overflow stripe');
-        // The view switch fills the row, or scrolls with a fade when its
-        // labels cannot fit (the test font is about twice Roboto's width);
-        // either way it starts on screen with a 48 dp target.
-        final views = find.byKey(const Key('view-switch'));
-        expect(views, findsOneWidget);
-        expect(tester.getRect(views).left, greaterThanOrEqualTo(0));
-        expect(
-            tester
-                .getSize(find.byKey(const ValueKey('view-switch-segment-0')))
-                .height,
-            greaterThanOrEqualTo(kMinInteractiveDimension));
-        for (final label in ['Routes', 'Segments']) {
-          final chip = find.widgetWithText(ChoiceChip, label);
-          expect(chip, findsOneWidget);
-          expect(tester.getRect(chip).left, greaterThanOrEqualTo(0));
+        for (final key in ['routes-view-menu', 'explore-search', 'explore-filters']) {
+          final f = find.byKey(ValueKey(key)).hitTestable().first;
+          final r = tester.getRect(f);
+          expect(r.left, greaterThanOrEqualTo(0), reason: key);
+          expect(r.right, lessThanOrEqualTo(phone.width), reason: key);
+          expect(r.height, greaterThanOrEqualTo(kMinInteractiveDimension),
+              reason: '$key keeps a 48 dp target');
         }
+        final label = tester.renderObject<RenderParagraph>(find.descendant(
+            of: find.byKey(const ValueKey('routes-view-menu')).hitTestable().first,
+            matching: find.text('Explore routes')));
+        expect(label.didExceedMaxLines, isFalse);
       });
 
       testWidgets('at ${scale}x Starred and Filters sit in the search row, '
-          'under the view switch',
+          'under the view menu',
           (tester) async {
         usePhone(tester);
         final prefs = await _makePrefs();
@@ -948,8 +952,9 @@ void main() {
             reason: 'Starred shares the search row');
         expect(
             tester.getRect(starred).top,
-            greaterThanOrEqualTo(
-                tester.getRect(find.byKey(const Key('view-switch'))).bottom));
+            greaterThanOrEqualTo(tester
+                .getRect(find.byKey(const ValueKey('routes-view-menu')))
+                .bottom));
         expectInsideScreen(tester, filters, 'Filters');
         expectInsideScreen(tester, starred, 'Starred');
         for (final control in [starred, filters]) {
@@ -1020,6 +1025,41 @@ void main() {
               'the title width');
     });
 
+    // decisions § 2611: Mine stays a list, on the roomier card Explore's
+    // list draws, so a long name is never cut and Official is a line of its
+    // own under it.
+    testWidgets('at 1.3x a long route name is whole, with Official under it',
+        (tester) async {
+      usePhone(tester);
+      final prefs = await _makePrefs();
+      const name = 'Cherry Creek Trail out-and-back to Confluence Park and the '
+          'long way home';
+      // ignore: invalid_use_of_visible_for_testing_member
+      final store = LocalRouteStore()
+        // ignore: invalid_use_of_visible_for_testing_member
+        ..debugSeed([
+          cm.Route(
+            id: 'long',
+            userId: 'test-user',
+            name: name,
+            waypoints: const [],
+            distanceMetres: 42617,
+            elevationGainMetres: 229,
+            official: true,
+          ),
+        ]);
+      await _pump(tester, prefs: prefs, routeStore: store, textScale: 1.3);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      final title = tester.renderObject<RenderParagraph>(find.text(name));
+      expect(title.didExceedMaxLines, isFalse, reason: 'the name is whole');
+      final official =
+          find.textContaining('Official course', findRichText: true);
+      expect(official, findsOneWidget);
+      expect(tester.getRect(official).top,
+          greaterThanOrEqualTo(tester.getRect(find.text(name)).bottom));
+    });
+
     testWidgets('Build is the one FAB; Import sits in the control row',
         (tester) async {
       usePhone(tester);
@@ -1044,7 +1084,8 @@ void main() {
   // Owner decision 1 on issue #1374: Routes is My routes · Explore, and the
   // segment catalogue is Explore's Segments chip rather than a Fitness tab.
   group('RoutesScreen — My routes · Explore', () {
-    testWidgets('the view row switches views and Explore keeps its chip',
+    testWidgets('the view menu switches between My routes, Explore routes and '
+        'Explore segments',
         (tester) async {
       final prefs = await _makePrefs();
       final show = ValueNotifier(RoutesShow.mine);
@@ -1056,40 +1097,32 @@ void main() {
       expect(find.byType(GlobalSegmentsScreen), findsNothing,
           reason: 'Explore is built the first time it is shown');
 
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
-      await tester.pump();
+      await _pickView(tester, RoutesShow.routes);
       expect(show.value, RoutesShow.routes);
       expect(find.byType(ExploreRoutesScreen), findsOneWidget);
       expect(find.byType(FloatingActionButton), findsNothing);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Segments'));
-      await tester.pump();
+      await _pickView(tester, RoutesShow.segments);
       expect(show.value, RoutesShow.segments);
       expect(find.byType(GlobalSegmentsScreen), findsOneWidget);
       expect(find.byType(ExploreRoutesScreen), findsNothing,
           reason: 'one Explore view on screen at a time');
 
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Mine')));
+      await _pickView(tester, RoutesShow.mine);
       // Past the Scaffold's FAB entrance, which draws the old and new FAB.
       await tester.pump(const Duration(seconds: 1));
       expect(show.value, RoutesShow.mine);
       expect(find.widgetWithText(FloatingActionButton, 'Build'),
           findsOneWidget);
-
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
-      await tester.pump();
-      expect(show.value, RoutesShow.segments,
-          reason: 'Explore reopens on the chip it was left on');
+      expect(find.text('My routes'), findsWidgets,
+          reason: 'the menu names the view on screen');
     });
 
     // Each view is its own body in an IndexedStack (decisions § 2490), so a
     // round trip through Explore must not reset what the runner typed or
     // chose in a view they left.
-    testWidgets('Mine to Explore to Segments and back keeps each view\'s '
-        'search text and filters', (tester) async {
+    testWidgets('Mine to Explore to Segments and back keeps Mine\'s search '
+        'text and filters', (tester) async {
       final prefs = await _makePrefs();
       final show = ValueNotifier(RoutesShow.mine);
       addTearDown(show.dispose);
@@ -1111,40 +1144,12 @@ void main() {
       expect(find.byTooltip('Remove filter: A–Z'), findsOneWidget);
       expect(find.text('Riverside Way'), findsNothing);
 
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
-      await tester.pump();
+      await _pickView(tester, RoutesShow.routes);
       expect(show.value, RoutesShow.routes);
-      // Explore's search is an icon on its chip line (decisions § 2610).
-      await tester.tap(find.descendant(
-          of: find.byType(ExploreRoutesScreen),
-          matching: find.byKey(const Key('filter-bar-search'))));
-      await tester.pump();
-      await tester.enterText(
-          find.descendant(
-              of: find.byType(ExploreRoutesScreen),
-              matching: find.byType(TextField)),
-          'harbour');
-      await tester.pump();
+      await _pickView(tester, RoutesShow.segments);
+      expect(show.value, RoutesShow.segments);
 
-      // A live query holds the field open over the chips, so the trip to
-      // Segments goes through the shell's channel, as a link would.
-      show.value = RoutesShow.segments;
-      await tester.pump();
-      show.value = RoutesShow.routes;
-      await tester.pump();
-      expect(
-          tester
-              .widget<TextField>(find.descendant(
-                  of: find.byType(ExploreRoutesScreen),
-                  matching: find.byType(TextField)))
-              .controller!
-              .text,
-          'harbour',
-          reason: 'Explore\'s search survives a trip to Segments');
-
-      await tester.tap(find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Mine')));
+      await _pickView(tester, RoutesShow.mine);
       await tester.pump(const Duration(seconds: 1));
       expect(show.value, RoutesShow.mine);
       expect(
@@ -1168,10 +1173,10 @@ void main() {
       await tester.pump();
       expect(find.byType(GlobalSegmentsScreen), findsOneWidget);
       expect(
-          tester
-              .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Segments'))
-              .selected,
-          isTrue);
+          find.descendant(
+              of: find.byType(GlobalSegmentsScreen),
+              matching: find.text('Explore segments')),
+          findsOneWidget);
       expect(navigator.canPop(), isFalse, reason: 'selected, not pushed');
     });
   });
@@ -1230,9 +1235,9 @@ void main() {
 
       await _pump(tester, prefs: prefs, routeStore: store);
       await tester.pump();
-      // The view switch's first segment: a text control at the top of the
-      // rail, like the chips that were here.
-      final chip = find.byKey(const ValueKey('view-switch-segment-0'));
+      // The view menu: a text control at the top of the rail, like the
+      // chips that were here.
+      final chip = find.byKey(const ValueKey('routes-view-menu'));
       final small = tester.getSize(chip).height;
       // A 48 dp tap target; the old 40 px lane squeezed it.
       expect(small, greaterThanOrEqualTo(48));
