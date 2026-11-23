@@ -23030,6 +23030,37 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Lista · $n parques',
+      one: 'Lista · $n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => 'Como funcionam os percursos de parques';
+
+  @override
+  String get parksMapLabel => 'Mapa de percursos de parques';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park, $count';
+  }
+
+  @override
+  String get parksAboutPark => 'Sobre este parque';
+
+  @override
+  String get parksStartHere => 'Partida aqui';
+
+  @override
+  String get parksBoard => 'Classificação';
+
+  @override
   String get eventCourseLinesMapBoth =>
       'Mapa das linhas de partida e de chegada do percurso';
 
@@ -47463,6 +47494,37 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
     );
     return '$_temp0';
   }
+
+  @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Lista · $n parques',
+      one: 'Lista · $n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => 'Como funcionam os percursos de parques';
+
+  @override
+  String get parksMapLabel => 'Mapa de percursos de parques';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park, $count';
+  }
+
+  @override
+  String get parksAboutPark => 'Sobre este parque';
+
+  @override
+  String get parksStartHere => 'Largada aqui';
+
+  @override
+  String get parksBoard => 'Classificação';
 
   @override
   String get eventCourseLinesMapBoth =>

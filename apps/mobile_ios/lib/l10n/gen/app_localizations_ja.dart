@@ -21415,6 +21415,36 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'リスト · 公園$nか所',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => '公園コースのしくみ';
+
+  @override
+  String get parksMapLabel => '公園コースの地図';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park、$count';
+  }
+
+  @override
+  String get parksAboutPark => 'この公園について';
+
+  @override
+  String get parksStartHere => 'ここからスタート';
+
+  @override
+  String get parksBoard => 'ランキング';
+
+  @override
   String get eventCourseLinesMapBoth => 'コースのスタートラインとフィニッシュラインの地図';
 
   @override

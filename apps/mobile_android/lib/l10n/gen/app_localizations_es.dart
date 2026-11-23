@@ -23003,6 +23003,37 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Lista · $n parques',
+      one: 'Lista · $n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => 'Cómo funcionan los recorridos de parques';
+
+  @override
+  String get parksMapLabel => 'Mapa de recorridos de parques';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park, $count';
+  }
+
+  @override
+  String get parksAboutPark => 'Sobre este parque';
+
+  @override
+  String get parksStartHere => 'Salida aquí';
+
+  @override
+  String get parksBoard => 'Clasificación';
+
+  @override
   String get eventCourseLinesMapBoth =>
       'Mapa de las líneas de salida y meta del recorrido';
 
