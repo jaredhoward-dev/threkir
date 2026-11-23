@@ -290,14 +290,19 @@ becomes an **action button**, not a tab.
   to anything. While a run records both gestures still return to the
   recorder.
 - **The centre button says what a tap does.** When the tap opens the
-  recorder it shows a play icon and names the runner's default activity, which is
-  what the recorder will capture: the caption "Run" / "Walk" / "Cycle" /
+  recorder it wears the runner's default activity's own glyph and names it,
+  which is what the recorder will capture: the glyph `ActivityType.icon`
+  (runner, walker, bike, terrain, stroller; the recorder's activity chips use
+  the same mapping), the caption "Run" / "Walk" / "Cycle" /
   "Trail run" / "Stroller" (`activityTypeLabel`) and the spoken label "Open
   the recording screen (Run)" instead of "+ Log" (#1230; the empty Home's
   primary button and the empty Runs list follow the same preference). It
   never says Start there: the tap opens the start screen and starts
   nothing, and on mobile only a control that starts the run is labelled
-  Start (owner decision 2026-11-12, issue #1374). While a run records it turns the error colour,
+  Start (owner decision 2026-11-12, issue #1374). For the same reason it
+  never wears the play icon there: play is the docked Start's on the idle Run
+  page, so the glyph turning into play is the sign that the tap starts the run
+  (decisions § 2608). While a run records it turns the error colour,
   captioned "Recording" and announced "Return to your run". On the Run
   page itself the phone's docked button is the run's **Stop** instead: the
   recorder's 800 ms `HoldToStopButton` with its progress ring, captioned
@@ -327,8 +332,9 @@ becomes an **action button**, not a tab.
   manual-entry button reads "Add past run", so the two buttons a thumb apart
   no longer both read as starting one.
 - **The hub's nav label follows modality visibility.** With Gym and
-  Nutrition both hidden the Fitness item is "Training" under a runner icon
-  (decisions § 139 amendment); otherwise it is "Fitness" under a dumbbell.
+  Nutrition both hidden the Fitness item is "Training" under a plan icon
+  (`event_note`; decisions § 139 amendment, § 2608: not the runner the centre
+  button beside it wears); otherwise it is "Fitness" under a dumbbell.
 - **Switching a modality on is announced.** A Log action for a hidden Gym or
   Nutrition switches it on (§ 1739) and now shows a banner with an Undo that
   restores the prior value, null included.
