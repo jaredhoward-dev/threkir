@@ -163,9 +163,13 @@ class _MapFirstPageState extends State<MapFirstPage> {
             child: AnimatedOpacity(
               opacity: showControls ? 1 : 0,
               duration: const Duration(milliseconds: 150),
+              // Both gutters, so a long label wraps inside the map's width
+              // rather than running off its start edge.
               child: Padding(
                 padding: const EdgeInsetsDirectional.only(
-                    end: AppInsets.gutter, bottom: AppSpace.sm),
+                    start: AppInsets.gutter,
+                    end: AppInsets.gutter,
+                    bottom: AppSpace.sm),
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: Column(

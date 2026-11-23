@@ -313,6 +313,12 @@ void main() {
         expect(f.right, lessThanOrEqualTo(width - AppInsets.gutter + 0.5));
         expect(i.width, greaterThanOrEqualTo(48));
         expect(i.height, greaterThanOrEqualTo(48));
+        // Nothing is pushed off screen or under the icons: the chips wrap.
+        for (final chip in find.byType(ChoiceChip).evaluate()) {
+          final r = tester.getRect(find.byWidget(chip.widget));
+          expect(r.left, greaterThanOrEqualTo(0));
+          expect(r.right, lessThanOrEqualTo(i.left + 0.5));
+        }
       });
     }
 

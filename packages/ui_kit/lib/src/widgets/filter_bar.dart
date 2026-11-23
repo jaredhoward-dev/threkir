@@ -308,7 +308,10 @@ class FilterBar extends StatelessWidget {
   /// under a map, where the map is the subject and the search a way in
   /// (Routes → Explore, decisions § 2610); the icon is named by the field's
   /// hint. Without a chip line there is nothing to fold beside, and the field
-  /// stays a row of its own.
+  /// stays a row of its own. In this mode the chips wrap instead of
+  /// scrolling, so none is hidden beside the pinned icons; while a search is
+  /// applied the field is its own row above them; and Back closes an open
+  /// field first.
   final bool collapsibleSearch;
 
   /// With [collapsibleSearch], whether a search is applied to the list: the
@@ -365,28 +368,28 @@ class FilterBar extends StatelessWidget {
   Widget _collapsible(BuildContext context, AppSearchField field) {
     final start = padding.left;
     final end = padding.right;
-    final line = EdgeFadeScroll(
-      scrollKey: const Key('filter-bar-chips'),
+    // The chips wrap here rather than scroll: under a map they are the few
+    // that switch what the map shows (Routes · Segments), and at 2x on a
+    // 320 dp phone a scrolling line beside the two icons hid all but one of
+    // them (decisions § 2610). One row whenever they fit, which on a phone
+    // at 1.0x they do.
+    final line = Padding(
       padding: EdgeInsetsDirectional.only(start: start),
-      child: Row(
+      child: Wrap(
+        key: const Key('filter-bar-chips'),
+        spacing: AppSpace.sm,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          for (final chip in chips)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: AppSpace.sm),
-              child: chip,
-            ),
+          ...chips,
           for (final f in activeFilters)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: AppSpace.sm),
-              child: InputChip(
-                label: Text(f.label),
-                selected: true,
-                showCheckmark: false,
-                onPressed: onOpenFilters,
-                onDeleted: f.onRemove,
-                deleteButtonTooltipMessage: f.removeTooltip,
-                materialTapTargetSize: MaterialTapTargetSize.padded,
-              ),
+            InputChip(
+              label: Text(f.label),
+              selected: true,
+              showCheckmark: false,
+              onPressed: onOpenFilters,
+              onDeleted: f.onRemove,
+              deleteButtonTooltipMessage: f.removeTooltip,
+              materialTapTargetSize: MaterialTapTargetSize.padded,
             ),
         ],
       ),
