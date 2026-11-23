@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui_kit/ui_kit.dart';
 
@@ -277,6 +278,201 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.descendant(of: fab, matching: find.text('Build')), findsOneWidget,
         reason: 'at rest at the end the list has scrolled clear of it');
+  });
+
+  // decisions § 2610: the control row held its height above a list on the
+  // move; it slides away while the content scrolls down and comes back the
+  // moment it scrolls up, or rests at its top.
+  group('Control row', () {
+    final search = TextEditingController();
+    tearDownAll(search.dispose);
+    Widget hub({int rows = 40, HubSelection? selection}) => MaterialApp(
+          home: _Hub(bodies: [
+            HubTabBody(
+              title: 'Runs',
+              selection: selection,
+              filters: FilterBar(
+                search: AppSearchField(
+                    controller: search, hint: 'Search', clearTooltip: 'Clear'),
+              ),
+              body: ListView(children: [
+                for (var i = 0; i < rows; i++)
+                  SizedBox(height: 60, child: Text('row $i')),
+              ]),
+            ),
+          ]),
+        );
+    final row = find.byKey(const Key('hub-tab-controls'));
+    double rowHeight(WidgetTester tester) => tester.getSize(row).height;
+    double listTop(WidgetTester tester) =>
+        tester.getRect(find.byType(ListView)).top;
+    int searchNodes(WidgetTester tester) {
+      var count = 0;
+      bool visit(SemanticsNode node) {
+        if (node.label.contains('Search') || node.hint.contains('Search')) {
+          count++;
+        }
+        node.visitChildren(visit);
+        return true;
+      }
+
+      visit(tester.binding.pipelineOwner.semanticsOwner!.rootSemanticsNode!);
+      return count;
+    }
+
+    testWidgets('slides away while the list scrolls down, giving the list its '
+        'height, and comes back on the way up', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      final shown = rowHeight(tester);
+      final top = listTop(tester);
+      expect(searchNodes(tester), 1);
+      expect(shown, greaterThan(0));
+
+      final gesture = await tester.startGesture(const Offset(200, 400));
+      await gesture.moveBy(const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0, reason: 'hidden while the list moves down');
+      expect(listTop(tester), moreOrLessEquals(top - shown),
+          reason: 'the list takes the height the row held');
+      expect(find.byType(AppSearchField).hitTestable(), findsNothing);
+      expect(searchNodes(tester), 0, reason: 'a hidden control is not read');
+
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), moreOrLessEquals(shown),
+          reason: 'any scroll back up brings the row back');
+      await gesture.up();
+      await tester.pumpAndSettle();
+      semantics.dispose();
+    });
+
+    testWidgets('stays while its search has focus', (tester) async {
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), greaterThan(0));
+    });
+
+    testWidgets('stays over a list too short to need its height',
+        (tester) async {
+      // Eight rows scroll less than the row is tall.
+      await tester.pumpWidget(hub(rows: 8));
+      await tester.pump();
+      final shown = rowHeight(tester);
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), moreOrLessEquals(shown));
+    });
+
+    testWidgets('a selection stands in its place and, closed, leaves the row '
+        'on screen', (tester) async {
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      final shown = rowHeight(tester);
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0);
+      await tester.pumpWidget(hub(
+          selection: HubSelection(
+              title: '1 selected', onClose: () {}, closeTooltip: 'Close')));
+      await tester.pump();
+      expect(find.text('1 selected'), findsOneWidget);
+      await tester.pumpWidget(hub());
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), moreOrLessEquals(shown));
+    });
+
+    testWidgets('a map sheet raised to read its list makes room, and '
+        'lowered back to where it opened brings the row back', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: _Hub(bodies: [
+          HubTabBody(
+            title: 'Explore',
+            filters: FilterBar(
+              search: AppSearchField(
+                  controller: search, hint: 'Search', clearTooltip: 'Clear'),
+            ),
+            body: DraggableScrollableSheet(
+              initialChildSize: 0.4,
+              minChildSize: 0.2,
+              builder: (context, scroll) => ListView(
+                controller: scroll,
+                children: [
+                  for (var i = 0; i < 3; i++)
+                    SizedBox(height: 60, child: Text('route $i')),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ));
+      await tester.pump();
+      final shown = rowHeight(tester);
+      await tester.drag(find.text('route 0'), const Offset(0, -150));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0, reason: 'the raised sheet takes the room');
+      await tester.drag(find.text('route 0'), const Offset(0, 400));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), moreOrLessEquals(shown),
+          reason: 'with the map the subject again, its search is back');
+    });
+
+    testWidgets('on its own the row scrolls away with the heading, as before',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: HubTabBody(
+          title: 'Runs',
+          filters: FilterBar(
+            search: AppSearchField(
+                controller: search, hint: 'Search', clearTooltip: 'Clear'),
+          ),
+          body: const SizedBox.shrink(),
+        ),
+      ));
+      expect(row, findsNothing);
+    });
+  });
+
+  testWidgets('a map body asks for the hub\'s compact bar only while it is '
+      'the view showing', (tester) async {
+    final store = HubPrimaryActions();
+    addTearDown(store.dispose);
+    Widget views(int index) => MaterialApp(
+          home: Scaffold(
+            body: HubTabScope(
+              tab: 'routes',
+              actions: store,
+              child: IndexedStack(index: index, children: const [
+                HubTabBody(title: 'Mine', body: SizedBox.expand()),
+                HubTabBody(
+                    title: 'Explore',
+                    collapsesHubTitle: true,
+                    body: SizedBox.expand()),
+              ]),
+            ),
+          ),
+        );
+    await tester.pumpWidget(views(0));
+    await tester.pump();
+    expect(store.wantsCompactTitle('routes'), isFalse);
+    await tester.pumpWidget(views(1));
+    await tester.pump();
+    expect(store.wantsCompactTitle('routes'), isTrue);
+    await tester.pumpWidget(views(0));
+    await tester.pump();
+    expect(store.wantsCompactTitle('routes'), isFalse,
+        reason: 'hidden under the stack, it lets the title be');
+    await tester.pumpWidget(views(1));
+    await tester.pump();
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pump();
+    expect(store.wantsCompactTitle('routes'), isFalse,
+        reason: 'gone, it takes its request with it');
   });
 
   group('Menu', () {
