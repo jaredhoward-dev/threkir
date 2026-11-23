@@ -375,7 +375,12 @@ export const LOCALES_DIR = join(WEB_DIR, 'src', 'lib', 'i18n', 'locales');
 // (#1447) and the page headers' "Create challenge" on /social. Measured at
 // 2718 KB locally on the combined branch (CI measures about 3 KB higher, as
 // both PRs found). Same 6 KB of cover (decisions § 2470).
-export const MAX_CODE_KB = 2727;
+// Raised for the web minor/patch dependency bumps (PR #1475: maplibre-gl
+// 6.18, zip.js 2.25, fit-file-parser 6.2.9), consolidated with three other
+// dependency PRs. No source change: the same tree measured 2722 KB locally
+// after the bump, 4 KB over the 2718 above, and CI measured 2728 on #1475
+// alone, the same ~3 KB gap. 2722 + 3 + the same 6 KB of cover.
+export const MAX_CODE_KB = 2731;
 export const MAX_CORE_CATALOGUE_KB = 15;
 export const MAX_AREA_CATALOGUE_KB = 14;
 export const MAX_LARGEST_CHUNK_KB = 350;
