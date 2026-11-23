@@ -4061,11 +4061,11 @@ abstract class AppLocalizations {
   /// **'{distance} to go'**
   String runRouteRemaining(String distance);
 
-  /// Banner shown when the runner has strayed from the selected route
+  /// Banner shown when the runner has strayed from the selected route: how far from the route line, formatted in the runner's unit with its unit ("437 yd", "8.79 km").
   ///
   /// In en, this message translates to:
-  /// **'Off route — {metres}m away'**
-  String runOffRoute(int metres);
+  /// **'Off route — {distance} away'**
+  String runOffRoute(String distance);
 
   /// Banner shown when location permission is turned off mid-run
   ///
