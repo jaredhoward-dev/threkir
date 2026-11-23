@@ -399,6 +399,64 @@ void main() {
         matching: find.byType(RichText)));
     expect(name.didExceedMaxLines, isFalse);
   });
+
+  group('ExploreListCard at a raised text size', () {
+    test('the shape gives back the room the name grows into', () {
+      expect(ExploreListCard.thumbnailSideFor(1), ExploreListCard.thumbnailSize);
+      expect(ExploreListCard.thumbnailSideFor(0.85),
+          ExploreListCard.thumbnailSize);
+      expect(ExploreListCard.thumbnailSideFor(1.3),
+          closeTo(ExploreListCard.thumbnailSize / 1.3, 0.001));
+      expect(ExploreListCard.thumbnailSideFor(1.9),
+          greaterThanOrEqualTo(ExploreListCard.minThumbnailSize));
+      expect(ExploreListCard.thumbnailSideFor(2), isNull);
+    });
+
+    Future<void> pumpCard(WidgetTester tester, double scale) =>
+        tester.pumpWidget(MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: MediaQuery(
+            data: MediaQueryData(
+                size: const Size(320, 640),
+                textScaler: TextScaler.linear(scale)),
+            child: Scaffold(
+              body: SizedBox(
+                width: 288,
+                child: ExploreListCard(
+                  name: 'Pocahontas Lakeview Loop',
+                  stats: '21.3 km · 189 m',
+                  thumbnail: const SizedBox(key: ValueKey('shape')),
+                  onTap: () {},
+                  trailing: IconButton(
+                    key: const ValueKey('star'),
+                    icon: const Icon(Icons.star_border),
+                    onPressed: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ));
+
+    testWidgets('at 1x the shape and the star sit beside the name',
+        (tester) async {
+      await pumpCard(tester, 1);
+      expect(find.byKey(const ValueKey('shape')), findsOneWidget);
+      final name = tester.getRect(find.text('Pocahontas Lakeview Loop'));
+      final star = tester.getRect(find.byKey(const ValueKey('star')));
+      expect(star.left, greaterThan(name.right));
+    });
+
+    testWidgets('at 2x the shape goes and the star moves under the name',
+        (tester) async {
+      await pumpCard(tester, 2);
+      expect(find.byKey(const ValueKey('shape')), findsNothing);
+      final name = tester.getRect(find.text('Pocahontas Lakeview Loop'));
+      final star = tester.getRect(find.byKey(const ValueKey('star')));
+      expect(star.top, greaterThanOrEqualTo(name.bottom));
+    });
+  });
 }
 
 /// The sort chip's English label, as the list page shows it.

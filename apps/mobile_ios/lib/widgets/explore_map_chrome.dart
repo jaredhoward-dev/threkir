@@ -450,6 +450,14 @@ class ExploreOfficialLine extends StatelessWidget {
 /// One row of a list of routes or segments: a 76 dp shape on the left, the
 /// whole name, the Official line and the stats on the right. Mine passes its
 /// own [trailing] actions and selection.
+///
+/// The shape gives back the room the name's text grows into: it is
+/// [thumbnailSize] divided by the text scale, and below [minThumbnailSize] it
+/// is left out. At that size [trailing] moves under the texts too, so the
+/// name has the card's whole width and the controls sit on its bottom edge.
+/// At 2x on a 320 dp phone a fixed 76 dp shape and a trailing column left
+/// the name about 50 dp, so it broke letter by letter into a card several
+/// times the height of the list, its star hidden under the header.
 class ExploreListCard extends StatelessWidget {
   const ExploreListCard({
     super.key,
@@ -467,6 +475,14 @@ class ExploreListCard extends StatelessWidget {
   });
 
   static const double thumbnailSize = 76;
+
+  static const double minThumbnailSize = 40;
+
+  /// The shape's side at [textScale], or null when it is left out.
+  static double? thumbnailSideFor(double textScale) {
+    final side = textScale <= 1 ? thumbnailSize : thumbnailSize / textScale;
+    return side < minThumbnailSize ? null : side;
+  }
 
   final String name;
   final bool official;
@@ -487,6 +503,8 @@ class ExploreListCard extends StatelessWidget {
     final muted = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final side =
+        thumbnailSideFor(MediaQuery.textScalerOf(context).scale(14) / 14);
     return ListCard.row(
       margin: EdgeInsets.zero,
       dense: true,
@@ -494,17 +512,19 @@ class ExploreListCard extends StatelessWidget {
       onLongPress: onLongPress,
       selecting: selecting,
       selected: selected,
-      leadingWidth: thumbnailSize,
-      leading: SizedBox.square(
-        dimension: thumbnailSize,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: ColoredBox(
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: thumbnail,
-          ),
-        ),
-      ),
+      leadingWidth: side,
+      leading: side == null
+          ? null
+          : SizedBox.square(
+              dimension: side,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ColoredBox(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: thumbnail,
+                ),
+              ),
+            ),
       title: name,
       titleMaxLines: 99,
       badge: badge,
@@ -518,7 +538,8 @@ class ExploreListCard extends StatelessWidget {
           Text(stats, style: muted),
         ],
       ),
-      trailing: trailing,
+      trailing: side == null ? null : trailing,
+      actions: [if (side == null && trailing != null) trailing!],
     );
   }
 }
