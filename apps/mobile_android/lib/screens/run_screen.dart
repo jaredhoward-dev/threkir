@@ -828,6 +828,11 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   // Off-route
   double? _offRouteDistance;
   bool _offRouteWarned = false;
+
+  /// The runner has come within [_offRouteThresholdMetres] of the route
+  /// line this recording; until then a waiting course keeps the route's
+  /// off-route warning quiet.
+  bool _joinedRoute = false;
   static const double _offRouteThresholdMetres = 40;
 
   // Off-route → auto-notify safety contact (docs/features/safety.md).
@@ -1362,6 +1367,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   Future<void> _loadLiveCourse() async {
     final load = ++_liveCourseLoad;
     _liveCourse = null;
+    _joinedRoute = false;
     _liveCourseSettled = false;
     final routeId = _selectedRoute?.id;
     if (routeId == null) {
@@ -1599,15 +1605,18 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   }
 
   /// The route's off-route warning stays quiet while a followed course is
-  /// waiting, since the runner is heading to its start and the chip says how
-  /// far, and while it is timed, when the course's own warning stands in.
+  /// waiting and the runner has not yet joined the route line, since they
+  /// are heading to its start and the chip says how far; and while the
+  /// course is timed, when the course's own warning stands in.
   bool get _routeOffRouteQuiet => switch (_liveCourse?.phase) {
-        LiveCoursePhase.waiting || LiveCoursePhase.timing => true,
+        LiveCoursePhase.waiting => !_joinedRoute,
+        LiveCoursePhase.timing => true,
         _ => false,
       };
 
   void _clearLiveCourse() {
     _liveCourseLoad++;
+    _joinedRoute = false;
     _liveCourse = null;
     _liveCourseName = null;
     _liveCourseSettled = false;
@@ -2163,6 +2172,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   /// turn announcer and the cutoff legs move together.
   void _setFollowedRoute(cm.Route? route) {
     setState(() => _selectedRoute = route);
+    _joinedRoute = false;
     _rebuildTurnAnnouncer();
     _loadCutoffLegs();
     unawaited(_lookUpFollowedCourse());
@@ -3575,6 +3585,9 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _storedTrack = snapshot.storedTrack;
       _currentPosition = snapshot.currentPosition;
       _offRouteDistance = snapshot.offRouteDistanceMetres;
+      if ((_offRouteDistance ?? double.infinity) <= _offRouteThresholdMetres) {
+        _joinedRoute = true;
+      }
       _routeRemaining = snapshot.routeRemainingMetres;
       _routeAlong = snapshot.routeAlongMetres;
       // Mirror only — the visible banner flips through _checkGpsHealth's
@@ -5078,6 +5091,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _lapCount = 0;
       _offRouteDistance = null;
       _offRouteWarned = false;
+      _joinedRoute = false;
       _offRouteAlertDetector = null;
       _offRouteAlertFiring = false;
       _safetyNudgeVisible = false;

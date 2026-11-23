@@ -602,6 +602,27 @@ void main() {
   });
 
   testWidgets(
+      'having joined the route line on the way to the start, straying off it '
+      'shows and says the off-route warning', (tester) async {
+    final s = await pumpRunScreen(tester,
+        course: _course, route: _routeWithWalkIn);
+    await tester.pump();
+    await startRecording(tester);
+    await runThrough(tester, [(-200, 300), (-200, 60)]);
+    expect(find.byKey(const ValueKey('route-off-route')), findsNothing);
+    expect(s.cues.offRouteCues, 0);
+
+    await runThrough(tester, [(-200, 60), (-200, 0), (-180, 0), (-180, 200)]);
+    expect(chipText(tester), endsWith('to the start'),
+        reason: 'still waiting: the start box is never reached');
+    expect(find.byKey(const ValueKey('route-off-route')), findsOneWidget);
+    expect(s.cues.offRouteCues, 1);
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
       'following a route that is no park course, the off-route warning shows '
       'and is said, in the runner\'s unit', (tester) async {
     final s = await pumpRunScreen(tester, course: null, miles: true);
