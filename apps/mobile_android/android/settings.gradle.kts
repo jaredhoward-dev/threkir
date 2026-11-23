@@ -43,7 +43,7 @@ plugins {
     // app module applies it only when that file is present (see
     // app/build.gradle.kts) — the file is gitignored, so an unconditional
     // apply would break every build that has not fetched it.
-    id("com.google.gms.google-services") version "4.5.0" apply false
+    id("com.google.gms.google-services") version "4.6.0" apply false
 }
 
 include(":app")
