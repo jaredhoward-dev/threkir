@@ -264,6 +264,36 @@ void main() {
         });
       }
 
+      // PR #1467 review: when the badge did land at a line's start, it was
+      // drawn after the gap meant to part it from the last word, so the
+      // Official badge on an Explore card sat indented under the title.
+      for (final rtl in [false, true]) {
+        testWidgets('a badge that starts a line sits flush with the title\'s '
+            '${rtl ? 'right' : 'left'} edge', (tester) async {
+          // In the test font this title fills its first line exactly and the
+          // badge takes the second line's start.
+          const name = 'Loop MMMMMMMMMMMM';
+          await _pump(
+            tester,
+            Directionality(
+              textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+              child: ListCard.row(title: name, badge: globe, onTap: () {}),
+            ),
+            size: const Size(320, 640),
+          );
+          expect(tester.takeException(), isNull);
+          final title = tester.getRect(find.text(name));
+          final badge = tester.getRect(find.byKey(const Key('globe')));
+          expect(badge.top, greaterThan(title.top + 16),
+              reason: 'the case under test: the badge starts the second line');
+          if (rtl) {
+            expect(badge.right, moreOrLessEquals(title.right, epsilon: 0.5));
+          } else {
+            expect(badge.left, moreOrLessEquals(title.left, epsilon: 0.5));
+          }
+        });
+      }
+
       testWidgets('a title cut by the ellipsis keeps the badge', (tester) async {
         await pumpRoute(
             tester,

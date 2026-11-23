@@ -1256,12 +1256,6 @@ export const PAIRS = [
 				decl: '_surfaceLabel',
 				shape: 'switch',
 			},
-			{
-				file: 'apps/mobile_android/lib/screens/explore_routes_screen.dart',
-				decl: '_surfaceIcon',
-				shape: 'switch',
-				allowMissing: ['road'],
-			},
 		],
 	},
 	{

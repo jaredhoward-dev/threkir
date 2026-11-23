@@ -36,7 +36,6 @@ import '../backend_timeout.dart';
 import '../widgets/error_state.dart';
 import '../park_course_routes.dart';
 import '../widgets/explore_routes_map.dart';
-import '../widgets/route_track_preview.dart';
 import 'public_route_screen.dart';
 import 'route_detail_screen.dart';
 import '../widgets/top_banner.dart';
@@ -48,14 +47,15 @@ enum _DistanceFilter { any, short, medium, long, ultra }
 enum _SurfaceFilter { any, road, trail, mixed }
 
 /// Public routes: Routes → Explore on its Routes chip (issue #1374, owner
-/// decision 1), headed by the discovery maps the Routes tab hands it.
+/// decision 1).
 ///
 /// Map-first (issue #1374): the public routes in view are pins on a
-/// full-bleed map, and the search results are the list in its sheet, headed
-/// by the discovery maps. A search, with Near me as the quick chip (which also
-/// moves the map to the runner), and distance, surface, sort, Featured and
-/// tags in the Filters sheet. Mounted on its own (a test) it is a page titled
-/// Explore Routes.
+/// full-bleed map, the discovery maps the Routes tab hands it float at the
+/// map's foot, and the search results are the list in its sheet, which opens
+/// on the routes themselves (decisions § 2609). A search, with Near me as the
+/// quick chip (which also moves the map to the runner), and distance,
+/// surface, sort, Featured and tags in the Filters sheet. Mounted on its own
+/// (a test) it is a page titled Explore Routes.
 class ExploreRoutesScreen extends StatefulWidget {
   final ApiClient? apiClient;
   final LocalRouteStore routeStore;
@@ -64,7 +64,7 @@ class ExploreRoutesScreen extends StatefulWidget {
   /// The Routes tab's view row and Explore chips. Null on its own.
   final RoutesExploreChrome? chrome;
 
-  /// The discovery maps, heading the list in the sheet.
+  /// The discovery maps, floating at the foot of the map above the sheet.
   final Widget? maps;
 
   /// Test seam for the "Near me" fix. Production callers leave it null and
@@ -678,16 +678,23 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           controller: _map,
           onOpen: _openPin,
         ),
+        footer: widget.maps,
         attribution: ExploreRoutesMap.credit(context),
         bottomClearance: DockedFabInset.of(context),
+        // Snaps between a peek (the map), half (the map and the first few
+        // routes) and nearly full (the list), so a release never leaves the
+        // map as a sliver over a list that shows one route.
         sheet: MapFirstSheet(
           initialSize: 0.55,
           minSize: 0.2,
           maxSize: 0.85,
+          snapSizes: const [0.55],
           onScroll: _onScroll,
           slivers: [
-            if (widget.maps case final maps?) SliverToBoxAdapter(child: maps),
             ..._bodySlivers(theme, unit),
+            // The gap listEndClearance keeps under every other list; the
+            // sheet itself already adds the docked button and the bar.
+            const SliverToBoxAdapter(child: SizedBox(height: AppSpace.md)),
           ],
         ),
       ),
@@ -725,7 +732,9 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(
             AppInsets.gutter, AppSpace.sm, AppInsets.gutter, 0),
-        sliver: SliverList.builder(
+        sliver: SliverList.separated(
+          separatorBuilder: (_, _) =>
+              const SizedBox(height: AppInsets.itemGap),
           itemCount: _results.length + (_loading ? 1 : 0),
           itemBuilder: (context, index) {
             if (index >= _results.length) {
@@ -740,6 +749,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
             final route = _results[index];
 
             return _RouteCard(
+              key: ValueKey('explore-route-${route.id}'),
               parkCourses: _parkCourses,
               route: route,
               unit: unit,
@@ -769,6 +779,14 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
   }
 }
 
+/// One public route: its name on up to two lines across the card, then its
+/// distance, climb, surface and how often it has been run on one line, the
+/// way Segments and Mine read theirs.
+///
+/// The card used to lead with an 80 dp slot for a track thumbnail. Search and
+/// Near me read the `public_routes` view, which carries no waypoints, so that
+/// slot only ever drew a surface glyph, and the name it squeezed was cut after
+/// a word or two on a phone (decisions § 2609).
 class _RouteCard extends StatelessWidget {
   final cm.Route route;
   final DistanceUnit unit;
@@ -779,6 +797,7 @@ class _RouteCard extends StatelessWidget {
   final ParkCourseRouteLookup parkCourses;
 
   const _RouteCard({
+    super.key,
     required this.route,
     required this.parkCourses,
     required this.unit,
@@ -788,36 +807,30 @@ class _RouteCard extends StatelessWidget {
     required this.onToggleBookmark,
   });
 
+  /// "26.22 mi · 2,198 ft ↑ · Trail · 14 runs". Every space inside a fact is
+  /// non-breaking, so a raised text scale wraps the line between facts and
+  /// never between a number and its unit.
+  String _facts(AppLocalizations l10n) {
+    String glued(String s) => s.replaceAll(' ', ' ');
+    return [
+      glued(UnitFormat.distance(
+          routeDisplayDistanceM(
+              route.distanceMetres, route.officialDistanceMetres),
+          unit)),
+      if (route.elevationGainMetres > 0)
+        glued('${UnitFormat.elevation(route.elevationGainMetres, unit)} ↑'),
+      if (route.surface case final surface?) routeSurfaceLabel(l10n, surface),
+      if (route.runCount > 0) glued(l10n.routeDetailRunCount(route.runCount)),
+    ].join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return ListCard.row(
+      margin: EdgeInsets.zero,
       dense: true,
       onTap: onTap,
-      leadingWidth: 80,
-      leading: SizedBox(
-        height: 48,
-        // Explore is community-public routes — every row is by a non-owner.
-        // RouteTrackPreview's owner branch short-circuits to raw waypoints
-        // in the rare case of viewing your own published route.
-        child: route.waypoints.length >= 2
-            ? RouteTrackPreview(
-                routeId: route.id,
-                waypoints: route.waypoints,
-                ownerUserId: route.userId,
-                api: ApiClient(),
-              )
-            : Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _surfaceIcon(route.surface),
-                  color: theme.colorScheme.secondary,
-                ),
-              ),
-      ),
       title: route.name,
       badge: route.official || route.featured
           ? Row(
@@ -827,7 +840,8 @@ class _RouteCard extends StatelessWidget {
                   OfficialRouteBadge(routeId: route.id, lookup: parkCourses),
                 if (route.featured)
                   Padding(
-                    padding: const EdgeInsetsDirectional.only(start: 6),
+                    padding:
+                        const EdgeInsetsDirectional.only(start: AppSpace.xs),
                     child: Icon(
                       Icons.star,
                       size: 16,
@@ -837,51 +851,34 @@ class _RouteCard extends StatelessWidget {
               ],
             )
           : null,
-      meta: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              _tag(
-                  Icons.straighten,
-                  UnitFormat.distance(
-                      routeDisplayDistanceM(
-                          route.distanceMetres, route.officialDistanceMetres),
-                      unit)),
-              if (route.elevationGainMetres > 0)
-                _tag(Icons.trending_up,
-                    UnitFormat.elevation(route.elevationGainMetres, unit)),
-              if (route.surface != null)
-                _tag(_surfaceIcon(route.surface),
-                    routeSurfaceLabel(l10n, route.surface!)),
-              if (route.runCount > 0)
-                _tag(Icons.directions_run, '${route.runCount}'),
-            ],
-          ),
-          if (route.tags.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                for (final t in route.tags.take(4))
-                  StatusPill(
-                    label: t,
-                    foreground: theme.colorScheme.onSurfaceVariant,
-                    fill: theme.colorScheme.surfaceContainerHighest,
-                    size: StatusPillSize.compact,
-                  ),
-              ],
+      subtitle: _facts(l10n),
+      // Four facts at 2x text on a 320 dp phone take three lines; at two the
+      // run count was the one cut.
+      subtitleMaxLines: 3,
+      meta: route.tags.isEmpty
+          ? null
+          : Padding(
+              padding: const EdgeInsets.only(top: AppSpace.xs),
+              child: Wrap(
+                spacing: AppSpace.xs,
+                runSpacing: AppSpace.xs,
+                children: [
+                  for (final t in route.tags.take(4))
+                    StatusPill(
+                      label: t,
+                      foreground: theme.colorScheme.onSurfaceVariant,
+                      fill: theme.colorScheme.surfaceContainerHighest,
+                      size: StatusPillSize.compact,
+                    ),
+                ],
+              ),
             ),
-          ],
-        ],
-      ),
       trailing: IconButton(
         icon: Icon(
           saved ? Icons.bookmark : Icons.bookmark_border,
-          color: saved ? theme.colorScheme.primary : theme.colorScheme.outline,
+          color: saved
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
         ),
         tooltip: saved
             ? l10n.exploreRoutesRemoveFromLibrary
@@ -889,36 +886,5 @@ class _RouteCard extends StatelessWidget {
         onPressed: onToggleBookmark,
       ),
     );
-  }
-
-  Widget _tag(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: theme.colorScheme.outline),
-        const SizedBox(width: 3),
-        // Flexible: at 2x text on a 320 dp phone the card's text column is
-        // about 110 dp, and a distance on one line overflowed it.
-        Flexible(
-          child: Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static IconData _surfaceIcon(String? surface) {
-    switch (surface) {
-      case 'trail':
-        return Icons.terrain;
-      case 'mixed':
-        return Icons.alt_route;
-      default:
-        return Icons.route;
-    }
   }
 }

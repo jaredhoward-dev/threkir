@@ -8,13 +8,23 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ui_kit/ui_kit.dart' show AppSearchField, PageHeading;
+import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:ui_kit/ui_kit.dart'
+    show
+        AppSearchField,
+        AppSpace,
+        AppTheme,
+        HubPrimaryActions,
+        HubTabScope,
+        PageHeading;
+import '../lib/fab_clearance.dart';
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/local_route_store.dart';
 import '../lib/preferences.dart';
 import '../lib/routes_views.dart';
 import '../lib/screens/explore_routes_screen.dart';
 import 'supabase_test_init.dart';
+import 'worst_case_layout.dart';
 
 bool _supabaseReady = false;
 
@@ -149,6 +159,7 @@ Position _fix(double lat, double lng) => Position(
 void main() {
   setUpAll(_ensureSupabase);
   _mapFirstTests();
+  _layoutTests();
 
   group('ExploreRoutesScreen — initial render', () {
     testWidgets('renders the Explore Routes app-bar title', (tester) async {
@@ -410,8 +421,8 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Hill loop'), findsOneWidget);
-    expect(find.text('751 ft'), findsOneWidget);
-    expect(find.text('229m'), findsNothing);
+    expect(find.textContaining(RegExp(r'751\sft')), findsOneWidget);
+    expect(find.textContaining('229'), findsNothing);
   });
 }
 
@@ -592,4 +603,292 @@ void _mapFirstTests() {
       expect(tabs.index, 1, reason: 'a drag on the list did not swipe');
     });
   });
+}
+
+/// A dozen public routes with long names, and nothing on the map.
+class _LayoutApi extends _BookmarkApi {
+  @override
+  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
+    String? query,
+    double? minDistanceM,
+    double? maxDistanceM,
+    String? surface,
+    List<String>? tags,
+    bool featuredOnly = false,
+    String sort = 'newest',
+    int limit = 50,
+    List<Object?>? after,
+  }) async =>
+      after == null
+          ? cm.KeysetPage([
+              for (var i = 0; i < 12; i++)
+                cm.Route(
+                  id: 'L$i',
+                  name: 'Pocahontas Lakeview $i',
+                  waypoints: const [],
+                  distanceMetres: 8050,
+                  elevationGainMetres: 189,
+                  surface: 'trail',
+                  runCount: 14,
+                ),
+            ], null)
+          : const cm.KeysetPage(<cm.Route>[], null);
+
+  @override
+  Future<List<cm.DiscoverableRoutePin>> fetchDiscoverableRoutesInBbox({
+    required double minLng,
+    required double minLat,
+    required double maxLng,
+    required double maxLat,
+    int limit = 100,
+    String filter = 'popular',
+    List<double>? distMin,
+    List<double?>? distMax,
+  }) async =>
+      const [];
+}
+
+/// Explore as the Routes tab hosts it inside the phone shell: the hub's
+/// scope, the docked centre button over a bottom bar and the inset the shell
+/// publishes for it, a view row above the controls and the heatmaps.
+Widget _hostedExplore({
+  required Preferences prefs,
+  required LocalRouteStore routeStore,
+  required HubPrimaryActions actions,
+  required AppLocalizations l10n,
+  Locale? locale,
+  double textScale = 1,
+}) =>
+    MaterialApp(
+      theme: AppTheme.light,
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: DockedFabInset(
+          height: kDockedFabOverhang,
+          child: HubTabScope(
+            tab: 'routes',
+            actions: actions,
+            child: ExploreRoutesScreen(
+              apiClient: _LayoutApi(),
+              routeStore: routeStore,
+              preferences: prefs,
+              chrome: RoutesExploreChrome(
+                viewBar: const SizedBox(height: 56),
+                chips: [
+                  FilterChip(
+                    label: Text(l10n.fitnessRunsRoutes),
+                    selected: true,
+                    onSelected: (_) {},
+                  ),
+                  FilterChip(
+                    label: Text(l10n.runSurfaceTabSegments),
+                    selected: false,
+                    onSelected: (_) {},
+                  ),
+                ],
+              ),
+              maps: Wrap(
+                key: const Key('test-maps'),
+                spacing: AppSpace.sm,
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.local_fire_department),
+                    label: Text(l10n.routesHeatmapTooltip),
+                    onPressed: () {},
+                  ),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.person_pin_circle_outlined),
+                    label: Text(l10n.runHeatmapTooltip),
+                    onPressed: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          key: const ValueKey('centre-button'),
+          onPressed: () {},
+          child: const Icon(Icons.play_arrow),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: NavigationBar(
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'),
+            NavigationDestination(icon: Icon(Icons.route), label: 'Training'),
+            NavigationDestination(icon: SizedBox.shrink(), label: 'Run'),
+            NavigationDestination(icon: Icon(Icons.public), label: 'Social'),
+            NavigationDestination(icon: Icon(Icons.person), label: 'You'),
+          ],
+        ),
+      ),
+    );
+
+Rect _sheetRect(WidgetTester tester) => tester.getRect(find
+    .descendant(
+        of: find.byKey(const ValueKey('map-first-sheet')),
+        matching: find.byType(Material))
+    .first);
+
+void _layoutTests() {
+  // Owner report from a phone (Routes → Explore, "way too compact"): the
+  // heatmap tiles headed the sheet, the card's thumbnail slot cut the name,
+  // and one route showed, its facts under the docked centre button
+  // (decisions § 2609).
+  group('ExploreRoutesScreen — routes first', () {
+    testWidgets('on a phone the sheet opens on several whole routes, the '
+        'heatmaps float on the map, and a name keeps the card\'s width',
+        (tester) async {
+      await _setView(tester, const Size(412, 915),
+          const FakeViewPadding(top: 24, bottom: 24));
+      final s = await _makeStores();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_hostedExplore(
+        prefs: s.prefs,
+        routeStore: s.routeStore,
+        actions: actions,
+        l10n: lookupAppLocalizations(const Locale('en')),
+      ));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+
+      final sheet = _sheetRect(tester);
+      final centre = tester.getRect(find.byKey(const ValueKey('centre-button')));
+      final whole = [
+        for (final card in find.byType(Card).evaluate())
+          tester.getRect(find.byWidget(card.widget)),
+      ].where((r) => r.top >= sheet.top && r.bottom <= centre.top);
+      expect(whole.length, greaterThanOrEqualTo(2),
+          reason: 'at rest the sheet shows at least two whole routes above '
+              'the docked centre button');
+
+      final maps = find.byKey(const Key('test-maps'));
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('map-first-sheet')),
+              matching: maps),
+          findsNothing,
+          reason: 'the heatmaps are not the head of the list');
+      expect(tester.getRect(maps).bottom, lessThanOrEqualTo(sheet.top));
+
+      final title = find.text('Pocahontas Lakeview 0');
+      final paragraph = tester.renderObject<RenderParagraph>(title);
+      expect(paragraph.didExceedMaxLines, isFalse,
+          reason: 'the route\'s name is cut');
+      final card = find.ancestor(of: title, matching: find.byType(Card));
+      expect(tester.getRect(title).left - tester.getRect(card).left,
+          AppSpace.md,
+          reason: 'no thumbnail slot ahead of the name');
+      expect(find.textContaining(RegExp(r'14\sruns')), findsWidgets,
+          reason: 'the run count is said in words, not a bare number');
+    });
+  });
+
+  // PR #1467 review: the Official badge, wrapped onto the line under the
+  // name, started about 8 dp in from the name and the facts line.
+  testWidgets('an Official badge on its own line sits flush with the name',
+      (tester) async {
+    await _setView(tester, const Size(360, 780), FakeViewPadding.zero);
+    final s = await _makeStores();
+    // In the test font this name fills its line and the badge wraps.
+    const name = 'Loop MMMMMMMMMM';
+    await _pump(tester,
+        prefs: s.prefs, routeStore: s.routeStore, api: _OfficialApi(name));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    final title = tester.getRect(find.text(name));
+    final badge =
+        tester.getRect(find.byKey(const Key('provenance-badge-official')));
+    expect(badge.top, greaterThan(title.top + 16),
+        reason: 'the case under test: the badge starts the second line');
+    expect(badge.left, moreOrLessEquals(title.left, epsilon: 0.5));
+  });
+
+  worstCaseTestWidgets('Routes → Explore scrolled to its last route',
+      (tester, locale) async {
+    final s = await _makeStores();
+    final actions = HubPrimaryActions();
+    addTearDown(actions.dispose);
+    await tester.pumpWidget(_hostedExplore(
+      prefs: s.prefs,
+      routeStore: s.routeStore,
+      actions: actions,
+      l10n: l10nFor(locale),
+      locale: locale,
+      textScale: kWorstCaseTextScale,
+    ));
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+    expectNoOverflow(tester, 'Explore at rest');
+
+    final list = find.byType(CustomScrollView).last;
+    final last = find.text('Pocahontas Lakeview 11');
+    await tester.dragUntilVisible(last, list, const Offset(0, -200));
+    await tester.drag(list, const Offset(0, -3000));
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+    expectNoOverflow(tester, 'Explore at its end');
+
+    final card = find.ancestor(of: last, matching: find.byType(Card));
+    final bookmark = find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate((w) => w is IconButton));
+    for (final target in [card, bookmark]) {
+      final rect = tester.getRect(target);
+      for (final fab in find.byType(FloatingActionButton).evaluate()) {
+        final fabRect = tester.getRect(find.byWidget(fab.widget));
+        expect(fabRect.overlaps(rect), isFalse,
+            reason: 'the last route at $rect sits under a floating button '
+                'at $fabRect');
+      }
+    }
+    final hit = tester.hitTestOnBinding(tester.getCenter(bookmark));
+    expect(hit.path.any((e) => e.target == tester.renderObject(bookmark)),
+        isTrue,
+        reason: 'a tap on the last route\'s bookmark lands on something '
+            'drawn over it');
+  });
+}
+
+/// One official route named [name]; it is not a park course's.
+class _OfficialApi extends _BookmarkApi {
+  _OfficialApi(this.name);
+
+  final String name;
+
+  @override
+  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
+    String? query,
+    double? minDistanceM,
+    double? maxDistanceM,
+    String? surface,
+    List<String>? tags,
+    bool featuredOnly = false,
+    String sort = 'newest',
+    int limit = 50,
+    List<Object?>? after,
+  }) async =>
+      after == null
+          ? cm.KeysetPage([
+              cm.Route(
+                id: 'o1',
+                name: name,
+                waypoints: const [],
+                distanceMetres: 42195,
+                official: true,
+              ),
+            ], null)
+          : const cm.KeysetPage(<cm.Route>[], null);
+
+  @override
+  Future<Set<String>> fetchParkCourseRouteIds(Iterable<String> ids) async =>
+      {};
 }

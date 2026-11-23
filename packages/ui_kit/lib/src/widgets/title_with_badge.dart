@@ -247,12 +247,33 @@ class _RenderTitleWithBadge extends RenderBox
     _fit(_painter, badge, constraints.maxWidth);
     final box = _painter.inlinePlaceholderBoxes?.firstOrNull;
     if (box != null && child != null) {
-      final left = _textDirection == TextDirection.ltr ? box.left + _gap : box.left;
+      final ltr = _textDirection == TextDirection.ltr;
+      // The gap separates the badge from the title's last word. When the
+      // badge starts a line there is no word before it, and drawing it after
+      // the gap indented it from the title's edge (issue #1467).
+      final starts = _startsLine(box);
+      final left = ltr
+          ? (starts ? box.left : box.left + _gap)
+          : (starts ? box.left + _gap : box.left);
       _badgeOffset = Offset(
           left, box.top + (box.bottom - box.top - child!.size.height) / 2);
       (child!.parentData! as BoxParentData).offset = _badgeOffset;
     }
     size = constraints.constrain(Size(_painter.width, _painter.height));
+  }
+
+  /// Whether [box] is the first thing on its line, at the line's start edge.
+  bool _startsLine(TextBox box) {
+    final mid = (box.top + box.bottom) / 2;
+    for (final line in _painter.computeLineMetrics()) {
+      final top = line.baseline - line.ascent;
+      final bottom = line.baseline + line.descent;
+      if (mid < top || mid > bottom) continue;
+      return _textDirection == TextDirection.ltr
+          ? (box.left - line.left).abs() < 0.5
+          : (box.right - (line.left + line.width)).abs() < 0.5;
+    }
+    return false;
   }
 
   @override
