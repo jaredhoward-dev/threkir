@@ -9,7 +9,7 @@
 	/// Every string arrives translated — the component takes no message keys, so
 	/// it can sit on a surface whose copy lives in a catalogue it knows nothing
 	/// about.
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { m } from '#lib/i18n/store.svelte.ts';
 
 	interface Props {
@@ -60,13 +60,15 @@
 		}
 	}
 
+	// The cleanup is onMount's own: onDestroy also runs in server rendering,
+	// where there is no document, and took a server-rendered page down.
 	onMount(() => {
 		document.addEventListener('mousedown', onDocPointer);
 		document.addEventListener('keydown', onKeydown);
-	});
-	onDestroy(() => {
-		document.removeEventListener('mousedown', onDocPointer);
-		document.removeEventListener('keydown', onKeydown);
+		return () => {
+			document.removeEventListener('mousedown', onDocPointer);
+			document.removeEventListener('keydown', onKeydown);
+		};
 	});
 </script>
 
