@@ -110,7 +110,7 @@ When a user starts a run with a route selected, the map shows:
 - Their current position as a moving dot
 - Distance remaining to the end of the route
 
-Off-route detection: if the user strays more than 40m from the nearest point on the route, a voice cue fires and a red banner appears ("Off route — 60m from path"). The banner dismisses when the user returns to within 20m of the route (half the threshold, avoids flapping).
+Off-route detection: if the user strays more than 40m from the nearest point on the route, a voice cue fires and a red banner appears ("Off route — 60 m away", the distance in the runner's unit: "66 yd" to a miles runner). Heading to the start of a followed park course, and while that course is timed, the route's banner and cue stay quiet (the course has its own warning once timing). The banner dismisses when the user returns to within 20m of the route (half the threshold, avoids flapping).
 
 The map auto-centres on the user's position during the run (follow mode). Users can pan away to look ahead; a re-centre FAB appears in the bottom-right corner to snap back to the runner. There is no auto-re-centre-on-timer.
 

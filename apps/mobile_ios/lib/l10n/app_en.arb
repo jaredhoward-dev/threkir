@@ -3117,12 +3117,12 @@
       }
     }
   },
-  "runOffRoute": "Off route — {metres}m away",
+  "runOffRoute": "Off route — {distance} away",
   "@runOffRoute": {
-    "description": "Banner shown when the runner has strayed from the selected route",
+    "description": "Banner shown when the runner has strayed from the selected route: how far from the route line, formatted in the runner's unit with its unit (\"437 yd\", \"8.79 km\").",
     "placeholders": {
-      "metres": {
-        "type": "int"
+      "distance": {
+        "type": "String"
       }
     }
   },

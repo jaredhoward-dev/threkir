@@ -2334,8 +2334,8 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String runOffRoute(int metres) {
-    return 'コース外 — $metres m 離れています';
+  String runOffRoute(String distance) {
+    return 'コース外 — $distance 離れています';
   }
 
   @override

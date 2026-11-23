@@ -652,7 +652,7 @@
   "runStatsPageA11yLabel": "Página de estatísticas {page} de {total}",
   "runStatsNextPageA11yHint": "Mostra as estatísticas seguintes",
   "runRouteRemaining": "faltam {distance}",
-  "runOffRoute": "Fora da rota — a {metres} m",
+  "runOffRoute": "Fora da rota — a {distance}",
   "runPermissionRevoked": "Permissão de localização revogada",
   "runGpsLost": "Sinal de GPS perdido — vá para um local aberto",
   "runWeakGps": "GPS fraco — distância pausada",
