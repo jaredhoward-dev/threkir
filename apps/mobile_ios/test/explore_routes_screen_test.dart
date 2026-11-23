@@ -793,6 +793,27 @@ void _layoutTests() {
     });
   });
 
+  // PR #1467 review: the Official badge, wrapped onto the line under the
+  // name, started about 8 dp in from the name and the facts line.
+  testWidgets('an Official badge on its own line sits flush with the name',
+      (tester) async {
+    await _setView(tester, const Size(360, 780), FakeViewPadding.zero);
+    final s = await _makeStores();
+    // In the test font this name fills its line and the badge wraps.
+    const name = 'Loop MMMMMMMMMM';
+    await _pump(tester,
+        prefs: s.prefs, routeStore: s.routeStore, api: _OfficialApi(name));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    final title = tester.getRect(find.text(name));
+    final badge =
+        tester.getRect(find.byKey(const Key('provenance-badge-official')));
+    expect(badge.top, greaterThan(title.top + 16),
+        reason: 'the case under test: the badge starts the second line');
+    expect(badge.left, moreOrLessEquals(title.left, epsilon: 0.5));
+  });
+
   worstCaseTestWidgets('Routes → Explore scrolled to its last route',
       (tester, locale) async {
     final s = await _makeStores();
@@ -835,4 +856,39 @@ void _layoutTests() {
         reason: 'a tap on the last route\'s bookmark lands on something '
             'drawn over it');
   });
+}
+
+/// One official route named [name]; it is not a park course's.
+class _OfficialApi extends _BookmarkApi {
+  _OfficialApi(this.name);
+
+  final String name;
+
+  @override
+  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
+    String? query,
+    double? minDistanceM,
+    double? maxDistanceM,
+    String? surface,
+    List<String>? tags,
+    bool featuredOnly = false,
+    String sort = 'newest',
+    int limit = 50,
+    List<Object?>? after,
+  }) async =>
+      after == null
+          ? cm.KeysetPage([
+              cm.Route(
+                id: 'o1',
+                name: name,
+                waypoints: const [],
+                distanceMetres: 42195,
+                official: true,
+              ),
+            ], null)
+          : const cm.KeysetPage(<cm.Route>[], null);
+
+  @override
+  Future<Set<String>> fetchParkCourseRouteIds(Iterable<String> ids) async =>
+      {};
 }
