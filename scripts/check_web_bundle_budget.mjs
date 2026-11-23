@@ -380,7 +380,16 @@ export const LOCALES_DIR = join(WEB_DIR, 'src', 'lib', 'i18n', 'locales');
 // dependency PRs. No source change: the same tree measured 2722 KB locally
 // after the bump, 4 KB over the 2718 above, and CI measured 2728 on #1475
 // alone, the same ~3 KB gap. 2722 + 3 + the same 6 KB of cover.
-export const MAX_CODE_KB = 2731;
+// Raised for map-first Routes Explore and park courses (PR #1478, decisions
+// § 2611 and § 2612). Route-level code only, no new dependency: the shared
+// explore shell, view menu, map card, list card and empty view, the parks
+// map and the park page's course map, and the explore_viewport and park_map
+// helpers. Every module both trees share compiled to the same bytes and the
+// largest chunk stayed 290 KB; the PR's code is new UI, not a duplicate.
+// Measured 2746 KB locally on the branch merged with #1480; #1480's own final
+// run measured 2728 against 2722 locally, so CI reads about 6 KB higher, not
+// the 3 the note above assumed. 2746 + 6 + the same 6 KB of cover.
+export const MAX_CODE_KB = 2758;
 export const MAX_CORE_CATALOGUE_KB = 15;
 export const MAX_AREA_CATALOGUE_KB = 14;
 export const MAX_LARGEST_CHUNK_KB = 350;
