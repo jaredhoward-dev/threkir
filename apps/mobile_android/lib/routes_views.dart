@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 
 /// The Routes tab's views: Mine (the runner's own and saved routes), or
 /// Explore on one of its two chips, Routes (public routes, with the discovery
-/// maps at their head) or Segments (the segment catalogue).
+/// maps on their map) or Segments (the segment catalogue).
 ///
 /// The segment catalogue was a Fitness tab of its own until issue #1374
 /// (owner decision 1) folded it into Routes, so one value names both the view

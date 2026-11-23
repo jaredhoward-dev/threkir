@@ -2488,18 +2488,30 @@ void main() {
       );
     });
 
-    test('routes_screen + club_detail + explore_routes use RouteTrackPreview',
-        () {
+    test('routes_screen + club_detail use RouteTrackPreview, and '
+        'explore_routes draws no track', () {
       // Reason: same audit. Three list-view screens previously
       // rendered <TrackPreview points: route.waypoints>. Owned rows
       // were fine but bookmarked / club / community-public rows leaked.
       // RouteTrackPreview wraps with the same lazy clip + cache
       // pattern as RunTrackPreview so non-owner viewers see clipped
       // output and owners short-circuit to the row column.
+      //
+      // Explore's rows come from the public_routes view, which carries no
+      // waypoints, so its card draws no thumbnail at all (decisions
+      // § 2609). One that comes back must go through RouteTrackPreview.
+      final explore =
+          File('lib/screens/explore_routes_screen.dart').readAsStringSync();
+      expect(
+        explore.replaceAll('RouteTrackPreview', ''),
+        isNot(contains('TrackPreview')),
+        reason: 'explore_routes_screen must draw a public route\'s track '
+            'through RouteTrackPreview, never a bare TrackPreview. See '
+            'decisions §33.',
+      );
       for (final path in const [
         'lib/screens/routes_screen.dart',
         'lib/screens/club_detail_screen.dart',
-        'lib/screens/explore_routes_screen.dart',
       ]) {
         final source = File(path).readAsStringSync();
         expect(
