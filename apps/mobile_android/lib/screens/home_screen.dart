@@ -1619,15 +1619,15 @@ class _HomeScreenState extends State<HomeScreen>
     // nothing, so the caption names the page, never "Start" (issue #1374:
     // a control labelled Start always starts the run). The recorder seeds
     // the default activity from the same preference, so the caption names
-    // that, not always a run.
+    // that, not always a run. The glyph is that activity's too, never play:
+    // play is the docked Start's, so the icon turning into play is the sign
+    // that this tap starts the run.
     final activity =
         cm.ActivityType.fromName(widget.preferences.defaultActivityType);
     final page = activityTypeLabel(l10n, activity);
     return _runIsPrimary
         ? (
-            // Play, not a runner: with Gym and Nutrition hidden the hub
-            // beside it wears the runner glyph.
-            icon: Icons.play_arrow,
+            icon: activity.icon,
             label: page,
             semantics: l10n.navOpenRecorderA11yLabel(page),
             recording: false,
@@ -1645,7 +1645,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// with both hidden it holds runs, routes, segments, plans and races, and
   /// a runner looking for their runs scanned past a gym icon. "Training"
   /// rather than "Runs" because the hub's own first tab is already "Runs",
-  /// and it names the plans and races beside them.
+  /// and it names the plans and races beside them. A plan glyph rather than
+  /// a runner, because the centre button beside it wears the default
+  /// activity's glyph, a runner for most.
   ({IconData icon, IconData outlined, String label}) _hubLook(
       AppLocalizations l10n) {
     final label = fitnessHubTitle(l10n,
@@ -1657,8 +1659,8 @@ class _HomeScreenState extends State<HomeScreen>
             label: label,
           )
         : (
-            icon: Icons.directions_run,
-            outlined: Icons.directions_run_outlined,
+            icon: Icons.event_note,
+            outlined: Icons.event_note_outlined,
             label: label,
           );
   }
