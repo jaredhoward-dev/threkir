@@ -310,9 +310,9 @@ dependencies {
     // `./gradlew recordRoborazziDebug` writes them; a plain test run renders
     // every screen and writes nothing, so CI keeps the generator compiling and
     // rendering without committing to pixel comparisons.
-    testImplementation("org.robolectric:robolectric:4.17")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.78.0")
+    testImplementation("org.robolectric:robolectric:4.18")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.79.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.79.0")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
@@ -373,7 +373,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0")
 
     // Serialization + coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
@@ -382,5 +382,5 @@ dependencies {
     // BuildConfig.SENTRY_DSN so a build without one is a no-op. The Android SDK auto-captures unhandled JVM exceptions;
     // we additionally wire breadcrumbs in long-running paths via
     // Sentry.captureException calls from coroutine catch blocks.
-    implementation("io.sentry:sentry-android:8.63.0")
+    implementation("io.sentry:sentry-android:8.64.0")
 }
