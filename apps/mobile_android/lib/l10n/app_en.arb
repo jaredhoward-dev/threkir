@@ -5238,10 +5238,6 @@
   "@routesStarForWatch": {
     "description": "Tooltip on the per-row star button when the route is not starred"
   },
-  "routesDiscover": "Discover",
-  "@routesDiscover": {
-    "description": "Screen-reader name of the strip of discovery maps (routes heatmap, run heatmap) heading Routes → Explore"
-  },
   "routesViewGroup": "Routes section",
   "@routesViewGroup": {
     "description": "Screen-reader name of the Mine / Explore chip pair at the top of the Routes tab. Same text as web routesPage.sectionLabel"
@@ -5262,7 +5258,7 @@
   "@routesPublicRoutes": {
     "description": "Label on the button that opens the Explore public-routes screen from the embedded routes view"
   },
-  "routesHeatmapTooltip": "Routes heatmap",
+  "routesHeatmapTooltip": "Popular routes",
   "@routesHeatmapTooltip": {
     "description": "Tooltip on the standalone-AppBar heatmap action in the routes list"
   },
@@ -6590,7 +6586,7 @@
   "@exploreRoutesTitle": {
     "description": "AppBar title for the explore-public-routes screen"
   },
-  "exploreRoutesModeNearMe": "Near Me",
+  "exploreRoutesModeNearMe": "Near me",
   "@exploreRoutesModeNearMe": {
     "description": "Mode-toggle label for the near-me mode"
   },
@@ -6601,10 +6597,6 @@
   "exploreRoutesFeatured": "Featured",
   "@exploreRoutesFeatured": {
     "description": "Featured-only filter-chip label on the explore screen"
-  },
-  "exploreRoutesSignInRequired": "Sign in and connect to the internet to explore routes",
-  "@exploreRoutesSignInRequired": {
-    "description": "Error state shown when exploring routes while signed out"
   },
   "exploreRoutesTimeout": "Connection timed out. Check your network and try again.",
   "@exploreRoutesTimeout": {
@@ -6635,17 +6627,33 @@
   "@exploreRoutesNearbyFailed": {
     "description": "Error state shown when a near-me search fails"
   },
-  "exploreRoutesEmptyNoPublic": "No public routes yet",
-  "@exploreRoutesEmptyNoPublic": {
-    "description": "Empty-state title when there are no public routes and no search query"
-  },
   "exploreRoutesEmptyNoMatch": "No routes match your search",
   "@exploreRoutesEmptyNoMatch": {
     "description": "Empty-state title when a search returns no results"
   },
-  "exploreRoutesEmptyBody": "Routes shared from the web app appear here",
-  "@exploreRoutesEmptyBody": {
-    "description": "Empty-state body on the explore screen"
+  "exploreRoutesSignInToExplore": "Sign in to explore routes others have shared.",
+  "@exploreRoutesSignInToExplore": {
+    "description": "Explore's signed-out state, above a Sign in button"
+  },
+  "exploreRoutesLocationOff": "Location is off for this app. Turn it on in Settings to see routes near you.",
+  "@exploreRoutesLocationOff": {
+    "description": "Explore's Near me when location was refused for good, above an Open settings button"
+  },
+  "exploreRoutesEmptyFiltered": "No routes match these filters.",
+  "@exploreRoutesEmptyFiltered": {
+    "description": "Explore's empty state when filters are on and nothing matches, above a Clear filters button"
+  },
+  "exploreRoutesEmptyNearby": "No public routes within 50 km of you yet.",
+  "@exploreRoutesEmptyNearby": {
+    "description": "Explore's empty state when Near me finds nothing within 50 km, above a Search everywhere button (mirrors web routeExplorer.emptyNearbyHint)"
+  },
+  "exploreRoutesSearchEverywhere": "Search everywhere",
+  "@exploreRoutesSearchEverywhere": {
+    "description": "Button on Explore's Near me empty state that turns Near me off and searches all public routes"
+  },
+  "exploreRoutesEmptyNone": "No one has shared a route yet.",
+  "@exploreRoutesEmptyNone": {
+    "description": "Explore's empty state when no public route exists at all, above a Build a route button"
   },
   "exploreRoutesDistanceAny": "Any distance",
   "@exploreRoutesDistanceAny": {
@@ -6877,13 +6885,9 @@
   "@heatmapLensHiddenGems": {
     "description": "Discovery-lens label for hidden-gem routes on the heatmap"
   },
-  "runHeatmapTitle": "Your heatmap",
+  "runHeatmapTitle": "Where you've run",
   "@runHeatmapTitle": {
     "description": "AppBar title for the personal run-track heatmap screen"
-  },
-  "runHeatmapTooltip": "Run heatmap",
-  "@runHeatmapTooltip": {
-    "description": "Tooltip on the run-list action that opens the personal run-track heatmap"
   },
   "runHeatmapLoading": "Loading your runs…",
   "@runHeatmapLoading": {
@@ -31260,7 +31264,7 @@
   "@filterBarSource": {
     "description": "Heading of the run-source choices (recorded, watch, Strava, parkrun, Health) in the run list's filter sheet"
   },
-  "runsSearchHint": "Search run names",
+  "runsSearchHint": "Search runs",
   "@runsSearchHint": {
     "description": "Placeholder of the Runs tab's search field, which matches the names runners give their runs"
   },

@@ -6561,12 +6561,6 @@ abstract class AppLocalizations {
   /// **'Star to show on watch'**
   String get routesStarForWatch;
 
-  /// Screen-reader name of the strip of discovery maps (routes heatmap, run heatmap) heading Routes → Explore
-  ///
-  /// In en, this message translates to:
-  /// **'Discover'**
-  String get routesDiscover;
-
   /// Screen-reader name of the Mine / Explore chip pair at the top of the Routes tab. Same text as web routesPage.sectionLabel
   ///
   /// In en, this message translates to:
@@ -6600,7 +6594,7 @@ abstract class AppLocalizations {
   /// Tooltip on the standalone-AppBar heatmap action in the routes list
   ///
   /// In en, this message translates to:
-  /// **'Routes heatmap'**
+  /// **'Popular routes'**
   String get routesHeatmapTooltip;
 
   /// Placeholder in the routes-list search field
@@ -7997,7 +7991,7 @@ abstract class AppLocalizations {
   /// Mode-toggle label for the near-me mode
   ///
   /// In en, this message translates to:
-  /// **'Near Me'**
+  /// **'Near me'**
   String get exploreRoutesModeNearMe;
 
   /// Placeholder in the explore search field
@@ -8011,12 +8005,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Featured'**
   String get exploreRoutesFeatured;
-
-  /// Error state shown when exploring routes while signed out
-  ///
-  /// In en, this message translates to:
-  /// **'Sign in and connect to the internet to explore routes'**
-  String get exploreRoutesSignInRequired;
 
   /// Error state shown when an explore search times out
   ///
@@ -8054,23 +8042,47 @@ abstract class AppLocalizations {
   /// **'Could not find nearby routes. Tap retry to try again.'**
   String get exploreRoutesNearbyFailed;
 
-  /// Empty-state title when there are no public routes and no search query
-  ///
-  /// In en, this message translates to:
-  /// **'No public routes yet'**
-  String get exploreRoutesEmptyNoPublic;
-
   /// Empty-state title when a search returns no results
   ///
   /// In en, this message translates to:
   /// **'No routes match your search'**
   String get exploreRoutesEmptyNoMatch;
 
-  /// Empty-state body on the explore screen
+  /// Explore's signed-out state, above a Sign in button
   ///
   /// In en, this message translates to:
-  /// **'Routes shared from the web app appear here'**
-  String get exploreRoutesEmptyBody;
+  /// **'Sign in to explore routes others have shared.'**
+  String get exploreRoutesSignInToExplore;
+
+  /// Explore's Near me when location was refused for good, above an Open settings button
+  ///
+  /// In en, this message translates to:
+  /// **'Location is off for this app. Turn it on in Settings to see routes near you.'**
+  String get exploreRoutesLocationOff;
+
+  /// Explore's empty state when filters are on and nothing matches, above a Clear filters button
+  ///
+  /// In en, this message translates to:
+  /// **'No routes match these filters.'**
+  String get exploreRoutesEmptyFiltered;
+
+  /// Explore's empty state when Near me finds nothing within 50 km, above a Search everywhere button (mirrors web routeExplorer.emptyNearbyHint)
+  ///
+  /// In en, this message translates to:
+  /// **'No public routes within 50 km of you yet.'**
+  String get exploreRoutesEmptyNearby;
+
+  /// Button on Explore's Near me empty state that turns Near me off and searches all public routes
+  ///
+  /// In en, this message translates to:
+  /// **'Search everywhere'**
+  String get exploreRoutesSearchEverywhere;
+
+  /// Explore's empty state when no public route exists at all, above a Build a route button
+  ///
+  /// In en, this message translates to:
+  /// **'No one has shared a route yet.'**
+  String get exploreRoutesEmptyNone;
 
   /// Distance-filter option that clears the distance filter on the explore screen
   ///
@@ -8375,14 +8387,8 @@ abstract class AppLocalizations {
   /// AppBar title for the personal run-track heatmap screen
   ///
   /// In en, this message translates to:
-  /// **'Your heatmap'**
+  /// **'Where you\'ve run'**
   String get runHeatmapTitle;
-
-  /// Tooltip on the run-list action that opens the personal run-track heatmap
-  ///
-  /// In en, this message translates to:
-  /// **'Run heatmap'**
-  String get runHeatmapTooltip;
 
   /// Status pill shown while the personal heatmap downloads tracks
   ///
@@ -37798,7 +37804,7 @@ abstract class AppLocalizations {
   /// Placeholder of the Runs tab's search field, which matches the names runners give their runs
   ///
   /// In en, this message translates to:
-  /// **'Search run names'**
+  /// **'Search runs'**
   String get runsSearchHint;
 
   /// Heading of the region choices in a list's filter sheet (the segment catalogue)

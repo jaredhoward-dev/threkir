@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show clampDouble;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollDirection;
+import 'package:flutter/rendering.dart' show RenderProxyBox, ScrollDirection;
 
+import '../motion.dart';
 import 'filter_bar.dart';
 import 'pushed_page.dart';
 
@@ -173,6 +175,27 @@ class HubPrimaryActions extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  /// Bodies asking for the hub's compact bar, by tab.
+  final Map<Object, Set<Object>> _compactTitle = {};
+
+  /// Whether the body showing on [tab] asks the hub to collapse its title
+  /// ([HubTabBody.collapsesHubTitle]).
+  bool wantsCompactTitle(Object tab) => _compactTitle[tab]?.isNotEmpty ?? false;
+
+  /// Records whether [owner], a body on [tab], asks for the compact bar.
+  void setCompactTitle(Object tab, Object owner, bool wants) {
+    if (_disposed) return;
+    final before = wantsCompactTitle(tab);
+    if (wants) {
+      (_compactTitle[tab] ??= {}).add(owner);
+    } else {
+      final forTab = _compactTitle[tab];
+      forTab?.remove(owner);
+      if (forTab != null && forTab.isEmpty) _compactTitle.remove(tab);
+    }
+    if (wantsCompactTitle(tab) != before) notifyListeners();
+  }
+
   /// Back handlers by tab, each keyed by the body that registered it, so a
   /// tab with several bodies (Routes' views) never has one clear another's.
   final Map<Object, Map<Object, VoidCallback>> _back = {};
@@ -320,7 +343,14 @@ class HubSelection {
 /// Inside a hub ([HubTabScope]) it hands [primary] to the hub, which shows it
 /// as its one FAB, hands [menu] to the hub's ⋮ ([HubMenu]), puts [actions] at
 /// the end of the control row, and wraps [body] in a pull-to-refresh when
-/// [onRefresh] is given. Mounted on its own (pushed where no hub is
+/// [onRefresh] is given. Its control row slides up under the hub's strip
+/// while the content scrolls down and comes back as soon as it scrolls up,
+/// or comes to rest at its top, so a list on the move gets the height the
+/// controls held; a map's sheet raised above where it opened (to read its
+/// list) does the same, and lowered back to it brings the row back
+/// (decisions § 2610). It stays while a control inside it has focus (a
+/// search being typed), while rows are selected, and whenever the content
+/// is too short to need the room. Mounted on its own (pushed where no hub is
 /// listening, or in a test) it builds the page a pushed screen is: [title]
 /// said in a heading above the controls, a small app bar that repeats it once
 /// the heading has scrolled away and holds [menu] as its ⋮, and [primary] as
@@ -337,6 +367,7 @@ class HubTabBody extends StatefulWidget {
     this.banner,
     this.selection,
     this.onRefresh,
+    this.collapsesHubTitle = false,
   });
 
   /// Shown only when mounted outside a hub.
@@ -366,11 +397,58 @@ class HubTabBody extends StatefulWidget {
 
   final Future<void> Function()? onRefresh;
 
+  /// For content that does not scroll the page (a map): while this body
+  /// shows, the hub collapses its large title into the compact bar, which a
+  /// map could never scroll away. At a large text size the title kept a
+  /// sixth of a small phone from the map (decisions § 2610).
+  final bool collapsesHubTitle;
+
   @override
   State<HubTabBody> createState() => _HubTabBodyState();
+
+  /// The hosting body's control row, for a control that must keep it on
+  /// screen (a search field with a live query), or null outside a hub tab.
+  static HubControlsHold? controlsOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<_HubControlsScope>()
+      ?.state
+      ._holdHandle;
 }
 
-class _HubTabBodyState extends State<HubTabBody> {
+/// Keeps a hub tab's control row on screen while a control asks
+/// ([HubTabBody.controlsOf]). Changes apply after the frame, so a control
+/// may ask from `initState` and let go from `dispose`.
+class HubControlsHold {
+  HubControlsHold._(this._state);
+
+  final _HubTabBodyState _state;
+
+  /// Holds the row for [owner] while [hold] is true.
+  void hold(Object owner, bool hold) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) _state._hold(owner, hold);
+    });
+  }
+
+  /// Gives Back to [owner] while [onBack] is set (a search opened from its
+  /// icon closes before Back leaves the tab); null withdraws it.
+  void registerBack(Object owner, VoidCallback? onBack) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) _state._setControlBack(owner, onBack);
+    });
+  }
+}
+
+class _HubControlsScope extends InheritedWidget {
+  const _HubControlsScope({required this.state, required super.child});
+
+  final _HubTabBodyState state;
+
+  @override
+  bool updateShouldNotify(_HubControlsScope oldWidget) => false;
+}
+
+class _HubTabBodyState extends State<HubTabBody>
+    with SingleTickerProviderStateMixin {
   HubTabScope? _scope;
 
   /// What this body last handed the hub, so a withdrawal never removes an
@@ -379,6 +457,39 @@ class _HubTabBodyState extends State<HubTabBody> {
 
   /// The menu this body last handed the hub, for the same reason.
   List<HubMenuItem>? _publishedMenu;
+
+  /// Hosted, how much of the control row has slid away under the hub's
+  /// strip: 0 shown, 1 gone. It follows the content's scroll, a pixel of
+  /// scroll for a pixel of row, and settles at either end.
+  double _hidden = 0;
+
+  /// Settles [_hidden] at an end once a scroll stops part way.
+  late final AnimationController _settle;
+
+  @override
+  void initState() {
+    super.initState();
+    _settle = AnimationController(vsync: this)
+      ..addListener(() => _setHidden(_settle.value));
+  }
+
+  /// Controls in the row asking it to stay (a search with a live query).
+  final Set<Object> _holds = {};
+
+  /// Whether the scroll under way began with a finger (and runs on through
+  /// its fling). A scroll the app makes (a jump to the end, a scroll to a
+  /// result) leaves the row where it is.
+  bool _userScroll = false;
+
+  late final _holdHandle = HubControlsHold._(this);
+
+  /// Whether a control in the row has focus, which keeps the row showing.
+  bool _controlsFocused = false;
+
+  /// Whether a raised map sheet, rather than a scroll, hid the row.
+  bool _sheetRaised = false;
+
+  final _controlsKey = GlobalKey();
 
   @override
   void didChangeDependencies() {
@@ -389,26 +500,54 @@ class _HubTabBodyState extends State<HubTabBody> {
         (scope?.tab != _scope!.tab || scope?.actions != _scope!.actions)) {
       _withdraw(_scope!);
       _scope!.actions.registerBack(_scope!.tab, this, null);
+      final old = _scope!;
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => old.actions.setCompactTitle(old.tab, this, false));
     }
     _scope = scope;
     if (scope != null) _registerBack(scope);
     _publish();
+    _publishCompactTitle();
   }
 
   @override
   void didUpdateWidget(HubTabBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // The selection bar stands in the row's place; once it closes the row
+    // comes back where it was left, on screen.
+    if (widget.selection != null) {
+      _settle.stop();
+      _hidden = 0;
+    }
     if (_scope case final scope?) _registerBack(scope);
     _publish();
+    _publishCompactTitle();
   }
 
   @override
   void dispose() {
+    _settle.dispose();
     if (_scope case final scope?) {
       _withdraw(scope);
       scope.actions.registerBack(scope.tab, this, null);
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => scope.actions.setCompactTitle(scope.tab, this, false));
     }
     super.dispose();
+  }
+
+  /// Asks for the hub's compact bar while this body is the one showing: a
+  /// tab's views share it under an `IndexedStack`, whose hidden children
+  /// [Visibility.of] reports. After the frame, as the other publishes are, so
+  /// the hub is never marked dirty while it builds.
+  void _publishCompactTitle() {
+    final scope = _scope;
+    if (scope == null) return;
+    final wants = widget.collapsesHubTitle && Visibility.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_scope, scope)) return;
+      scope.actions.setCompactTitle(scope.tab, this, wants);
+    });
   }
 
   /// While rows are selected, Back closes the selection (or, while a delete
@@ -416,13 +555,31 @@ class _HubTabBodyState extends State<HubTabBody> {
   /// the tab. The hub's host asks through [HubPrimaryActions.consumeBack], so
   /// a body never needs a `PopScope` of its own, and a hidden tab's selection
   /// never answers a Back pressed somewhere else.
+  ///
+  /// Otherwise a control in the row with something open (a search opened
+  /// from its icon) takes Back first, while this body is the view showing.
   void _registerBack(HubTabScope scope) {
-    final selection = widget.selection;
-    scope.actions.registerBack(
-      scope.tab,
-      this,
-      selection == null ? null : () => widget.selection?.onClose?.call(),
-    );
+    final VoidCallback? handler;
+    if (widget.selection != null) {
+      handler = () => widget.selection?.onClose?.call();
+    } else if (_controlBacks.isNotEmpty && Visibility.of(context)) {
+      handler = () => _controlBacks.values.last();
+    } else {
+      handler = null;
+    }
+    scope.actions.registerBack(scope.tab, this, handler);
+  }
+
+  /// Back handlers the row's controls have registered, by control.
+  final Map<Object, VoidCallback> _controlBacks = {};
+
+  void _setControlBack(Object owner, VoidCallback? onBack) {
+    if (onBack == null) {
+      _controlBacks.remove(owner);
+    } else {
+      _controlBacks[owner] = onBack;
+    }
+    if (_scope case final scope?) _registerBack(scope);
   }
 
   void _withdraw(HubTabScope scope) {
@@ -538,20 +695,30 @@ class _HubTabBodyState extends State<HubTabBody> {
   /// refresh on and off (a view switch) keeps the state under it.
   Widget _content() {
     final onRefresh = widget.onRefresh;
-    return NotificationListener<UserScrollNotification>(
-      onNotification: _onUserScroll,
-      child: RefreshIndicator(
-        onRefresh: onRefresh ?? () async {},
-        notificationPredicate: onRefresh == null
-            ? (_) => false
-            : defaultScrollNotificationPredicate,
-        child: widget.body,
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: _onSheet,
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _onMetrics,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
+          child: NotificationListener<UserScrollNotification>(
+            onNotification: _onUserScroll,
+            child: RefreshIndicator(
+              onRefresh: onRefresh ?? () async {},
+              notificationPredicate: onRefresh == null
+                  ? (_) => false
+                  : defaultScrollNotificationPredicate,
+              child: widget.body,
+            ),
+          ),
+        ),
       ),
     );
   }
 
   /// Hosted, tells the hub which way the list is moving, so its FAB shows
-  /// its icon only while the list scrolls down ([HubPrimaryActions.setCollapsed]).
+  /// its icon only while the list scrolls down
+  /// ([HubPrimaryActions.setCollapsed]).
   bool _onUserScroll(UserScrollNotification n) {
     final scope = _scope;
     if (scope == null || n.metrics.axis != Axis.vertical) return false;
@@ -566,19 +733,228 @@ class _HubTabBodyState extends State<HubTabBody> {
     return false;
   }
 
+  double get _rowHeight => _controlsKey.currentContext?.size?.height ?? 0;
+
+  /// Whether the row may go: never while a control in it has focus or holds
+  /// it (a live query), while rows are selected, or over content that would
+  /// not scroll without it, since a list that fits once the row has gone
+  /// could never be scrolled back to fetch it.
+  bool _mayHide(ScrollMetrics metrics) {
+    if (_controlsFocused || _holds.isNotEmpty || widget.selection != null) {
+      return false;
+    }
+    final height = _rowHeight;
+    return height > 0 &&
+        metrics.maxScrollExtent - metrics.minScrollExtent > height;
+  }
+
+  /// The row moves with the content: each pixel the content scrolls down
+  /// slides a pixel of row away, and each pixel up brings one back. While a
+  /// finger drags, the scroll the row took is handed back to the list, so
+  /// the row under the finger moves exactly as far as the finger did; the
+  /// list neither jumps nor runs ahead as the row's height changes. When the
+  /// scroll stops part way, the row settles at the nearer end, or shows if
+  /// the content has come to rest at its top.
+  bool _onScroll(ScrollNotification n) {
+    if (_scope == null || n.depth != 0 || n.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    switch (n) {
+      case ScrollStartNotification(:final dragDetails):
+        _userScroll = dragDetails != null;
+      case ScrollUpdateNotification(:final scrollDelta?) when _userScroll:
+        _follow(n, scrollDelta, handBack: n.dragDetails != null);
+      case OverscrollNotification(:final overscroll) when _userScroll:
+        _follow(n, overscroll, handBack: false);
+      case ScrollEndNotification():
+        _userScroll = false;
+        final atTop = n.metrics.pixels <= n.metrics.minScrollExtent;
+        if (_hidden > 0 && _hidden < 1 || atTop && _hidden > 0) {
+          _settleTo(!atTop && _hidden >= 0.5 && _mayHide(n.metrics) ? 1 : 0);
+        }
+      default:
+    }
+    return false;
+  }
+
+  void _follow(ScrollNotification n, double delta, {required bool handBack}) {
+    if (delta == 0) return;
+    if (delta > 0 && (_hidden >= 1 || !_mayHide(n.metrics))) return;
+    if (delta < 0 && _hidden <= 0) return;
+    final height = _rowHeight;
+    if (height <= 0) return;
+    _settle.stop();
+    final before = _hidden * height;
+    final after = clampDouble(before + delta, 0, height);
+    final taken = after - before;
+    if (taken == 0) return;
+    _setHidden(after / height);
+    // Over a map the row lies on the page rather than resizing it, so
+    // there is nothing to hand back.
+    if (handBack && !widget.collapsesHubTitle && !n.metrics.outOfRange) {
+      final position = n.context == null
+          ? null
+          : Scrollable.maybeOf(n.context!)?.position;
+      position?.correctPixels(position.pixels - taken);
+    }
+  }
+
+  /// A map's sheet raised above its opening size is being read, so the row
+  /// makes room for it; back at or under that size the map is the subject
+  /// again and the row, with its search, returns.
+  bool _onSheet(DraggableScrollableNotification n) {
+    if (_scope == null) return false;
+    final raised = n.extent > n.initialExtent + 0.01;
+    if (raised == _sheetRaised) return false;
+    _sheetRaised = raised;
+    final allowed =
+        !_controlsFocused && _holds.isEmpty && widget.selection == null;
+    _settleTo(raised && allowed ? 1 : 0);
+    return false;
+  }
+
+  /// A row hidden over content that has since stopped scrolling (a reload
+  /// that came back shorter) comes back, since no scroll could return it.
+  bool _onMetrics(ScrollMetricsNotification n) {
+    final metrics = n.metrics;
+    if (_hidden > 0 &&
+        !_sheetRaised &&
+        metrics.axis == Axis.vertical &&
+        metrics.maxScrollExtent <= metrics.minScrollExtent) {
+      _settleTo(0);
+    }
+    return false;
+  }
+
+  void _setHidden(double hidden) {
+    if (hidden == _hidden || !mounted) return;
+    setState(() => _hidden = hidden);
+  }
+
+  /// Moves the row to an end with a short ease, or at once with reduced
+  /// motion.
+  void _settleTo(double target) {
+    if (!mounted) return;
+    final duration = motionDuration(context, AppMotion.brief);
+    if (duration == Duration.zero || _hidden == target) {
+      _settle.stop();
+      _setHidden(target);
+      return;
+    }
+    _settle
+      ..value = _hidden
+      ..animateTo(target, duration: duration, curve: AppMotion.curveStandard);
+  }
+
+  /// A control asks the row to stay ([HubTabBody.holdControls]).
+  void _hold(Object owner, bool hold) {
+    final changed = hold ? _holds.add(owner) : _holds.remove(owner);
+    if (changed && hold) _settleTo(0);
+  }
+
+  /// The overlay's height with the row fully shown, as last laid out.
+  double _overlayHeight = 0;
+
+  void _onOverlaySize(Size size) {
+    final full = size.height + _hidden * _rowHeight;
+    if ((full - _overlayHeight).abs() < 0.5 || !mounted) return;
+    setState(() => _overlayHeight = full);
+  }
+
+  /// A map's page keeps one height while its row moves: the row and the
+  /// banner lie over the top of the map, and the map's page is told how much
+  /// they cover through the top of `MediaQuery.padding`, which
+  /// [MapFirstPage] keeps its sheet and overlays below. Hiding the row then
+  /// uncovers map rather than resizing the page the sheet is a fraction of,
+  /// so the sheet's edge stays under the thumb (decisions § 2610).
+  Widget _overlaid(Widget? controls) {
+    final media = MediaQuery.of(context);
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: MediaQuery(
+              data: media.copyWith(
+                  padding: media.padding.copyWith(top: _overlayHeight)),
+              child: _content(),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _ReportSize(
+              onSize: _onOverlaySize,
+              child: ColoredBox(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [?controls, ?widget.banner],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The control row, sliding up under whatever is above it by [_hidden].
+  /// Fully hidden, it is out of the pointer, focus and semantics trees, so a
+  /// screen reader never lands on a control that is not on screen.
+  Widget _hidingControls(Widget controls) {
+    final gone = _hidden >= 1;
+    return ClipRect(
+      child: Align(
+        key: const Key('hub-tab-controls'),
+        alignment: AlignmentDirectional.bottomCenter,
+        heightFactor: 1 - _hidden,
+        child: ExcludeSemantics(
+          excluding: gone,
+          child: ExcludeFocus(
+            excluding: gone,
+            child: IgnorePointer(
+              ignoring: gone,
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onFocusChange: (focused) {
+                  _controlsFocused = focused;
+                  if (focused) _settleTo(0);
+                },
+                child: KeyedSubtree(key: _controlsKey, child: controls),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selection = widget.selection;
     if (_scope != null) {
-      final controls =
-          selection != null ? _selectionRow(selection) : _controls();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ?controls,
-          ?widget.banner,
-          Expanded(child: _content()),
-        ],
+      final controls = selection != null
+          ? _selectionRow(selection)
+          : switch (_controls()) {
+              final row? => _hidingControls(row),
+              null => null,
+            };
+      if (widget.collapsesHubTitle) {
+        return _HubControlsScope(state: this, child: _overlaid(controls));
+      }
+      return _HubControlsScope(
+        state: this,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ?controls,
+            ?widget.banner,
+            Expanded(child: _content()),
+          ],
+        ),
       );
     }
     // On its own: the same controls and content under a heading and a small
@@ -635,5 +1011,37 @@ class _HubTabBodyState extends State<HubTabBody> {
         ),
       ),
     );
+  }
+}
+
+/// Reports its child's size after each layout that changes it.
+class _ReportSize extends SingleChildRenderObjectWidget {
+  const _ReportSize({required this.onSize, required super.child});
+
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderReportSize(onSize);
+
+  @override
+  void updateRenderObject(
+          BuildContext context, _RenderReportSize renderObject) =>
+      renderObject.onSize = onSize;
+}
+
+class _RenderReportSize extends RenderProxyBox {
+  _RenderReportSize(this.onSize);
+
+  ValueChanged<Size> onSize;
+  Size? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (size == _last) return;
+    _last = size;
+    final report = size;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onSize(report));
   }
 }

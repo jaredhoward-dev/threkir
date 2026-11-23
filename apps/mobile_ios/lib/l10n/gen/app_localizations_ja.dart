@@ -3815,9 +3815,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get routesStarForWatch => 'ウォッチに表示するためにスターを付ける';
 
   @override
-  String get routesDiscover => '見つける';
-
-  @override
   String get routesViewGroup => 'ルートセクション';
 
   @override
@@ -3833,7 +3830,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get routesPublicRoutes => '公開ルート';
 
   @override
-  String get routesHeatmapTooltip => 'ルートのヒートマップ';
+  String get routesHeatmapTooltip => '人気のルート';
 
   @override
   String get routesSearchHint => '名前でルートを検索…';
@@ -4751,9 +4748,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get exploreRoutesFeatured => 'おすすめ';
 
   @override
-  String get exploreRoutesSignInRequired => 'ルートを探索するにはサインインしてインターネットに接続してください';
-
-  @override
   String get exploreRoutesTimeout => '接続がタイムアウトしました。ネットワークを確認して再試行してください。';
 
   @override
@@ -4776,13 +4770,26 @@ class AppLocalizationsJa extends AppLocalizations {
       '近くのルートが見つかりませんでした。再試行をタップしてもう一度試してください。';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'まだ公開ルートがありません';
-
-  @override
   String get exploreRoutesEmptyNoMatch => '検索に一致するルートはありません';
 
   @override
-  String get exploreRoutesEmptyBody => 'Webアプリから共有されたルートがここに表示されます';
+  String get exploreRoutesSignInToExplore => 'サインインすると、ほかの人が共有したルートを探せます。';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'このアプリでは位置情報がオフになっています。近くのルートを見るには、設定でオンにしてください。';
+
+  @override
+  String get exploreRoutesEmptyFiltered => 'この絞り込みに合うルートはありません。';
+
+  @override
+  String get exploreRoutesEmptyNearby => 'まだ50 km以内に公開ルートがありません。';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'すべての場所で探す';
+
+  @override
+  String get exploreRoutesEmptyNone => 'まだ誰もルートを共有していません。';
 
   @override
   String get exploreRoutesDistanceAny => 'すべての距離';
@@ -4947,10 +4954,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get heatmapLensHiddenGems => '隠れた名所';
 
   @override
-  String get runHeatmapTitle => 'あなたのヒートマップ';
-
-  @override
-  String get runHeatmapTooltip => 'ランのヒートマップ';
+  String get runHeatmapTitle => '走った場所';
 
   @override
   String get runHeatmapLoading => 'ランを読み込み中…';
@@ -22671,7 +22675,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get filterBarSource => 'ソース';
 
   @override
-  String get runsSearchHint => 'ランの名前で検索';
+  String get runsSearchHint => 'ランを検索';
 
   @override
   String get filterBarRegion => '地域';

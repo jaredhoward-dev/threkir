@@ -14,9 +14,11 @@ import 'package:ui_kit/ui_kit.dart'
         AppSearchField,
         AppSpace,
         EmptyState,
+        ErrorState,
         FilterBar,
         HubTabBody,
         ListCard,
+        MapControlButton,
         MapFirstPage,
         MapFirstSheet,
         StatusPill,
@@ -36,6 +38,8 @@ import '../backend_timeout.dart';
 import '../widgets/error_state.dart';
 import '../park_course_routes.dart';
 import '../widgets/explore_routes_map.dart';
+import '../widgets/sign_in_required_state.dart';
+import '../widgets/stale_refresh_banner.dart';
 import 'public_route_screen.dart';
 import 'route_detail_screen.dart';
 import '../widgets/top_banner.dart';
@@ -50,12 +54,13 @@ enum _SurfaceFilter { any, road, trail, mixed }
 /// decision 1).
 ///
 /// Map-first (issue #1374): the public routes in view are pins on a
-/// full-bleed map, the discovery maps the Routes tab hands it float at the
-/// map's foot, and the search results are the list in its sheet, which opens
-/// on the routes themselves (decisions § 2609). A search, with Near me as the
-/// quick chip (which also moves the map to the runner), and distance,
-/// surface, sort, Featured and tags in the Filters sheet. Mounted on its own
-/// (a test) it is a page titled Explore Routes.
+/// full-bleed map, and the search results are the list in its sheet, which
+/// opens on the routes themselves (decisions § 2609). Near me is a labelled
+/// button on the map, with the other maps the Routes tab hands it above it,
+/// so the bar keeps only Routes · Segments, the search icon and Filters
+/// (decisions § 2610). The search runs as it is typed, after a short pause;
+/// distance, surface, sort, Featured and tags are in the Filters sheet.
+/// Mounted on its own (a test) it is a page titled Explore Routes.
 class ExploreRoutesScreen extends StatefulWidget {
   final ApiClient? apiClient;
   final LocalRouteStore routeStore;
@@ -64,8 +69,13 @@ class ExploreRoutesScreen extends StatefulWidget {
   /// The Routes tab's view row and Explore chips. Null on its own.
   final RoutesExploreChrome? chrome;
 
-  /// The discovery maps, floating at the foot of the map above the sheet.
-  final Widget? maps;
+  /// The other maps to open (the routes heatmap, the runner's own), as
+  /// map buttons stacked above Near me.
+  final List<Widget> mapButtons;
+
+  /// Opens the route builder, for the empty state's way forward. Null hides
+  /// it.
+  final VoidCallback? onBuildRoute;
 
   /// Test seam for the "Near me" fix. Production callers leave it null and
   /// get [locateForBrowse].
@@ -77,7 +87,8 @@ class ExploreRoutesScreen extends StatefulWidget {
     required this.routeStore,
     required this.preferences,
     this.chrome,
-    this.maps,
+    this.mapButtons = const [],
+    this.onBuildRoute,
     this.locateFn,
   });
 
@@ -106,6 +117,22 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
   Future<cm.KeysetPage<cm.Route>> Function(List<Object?>? after)? _activeSearch;
   List<Object?>? _resultsNext;
   String? _error;
+
+  /// Why there is nothing to show that a Retry cannot fix.
+  _Blocked? _blocked;
+
+  /// The text of the search the shown results came from, null for none.
+  /// What the field holds open and which empty state shows read this, not
+  /// the text being typed.
+  String? _appliedQuery;
+
+  /// The parameters of the search the shown rows came from, so a refresh of
+  /// the same search keeps them on screen until the new page lands.
+  Object? _shownSearch;
+
+  /// Runs the search a short pause after the last keystroke.
+  Timer? _typing;
+  static const _typingPause = Duration(milliseconds: 400);
 
   _DistanceFilter _distanceFilter = _DistanceFilter.any;
   _SurfaceFilter _surfaceFilter = _SurfaceFilter.any;
@@ -158,6 +185,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
 
   @override
   void dispose() {
+    _typing?.cancel();
     _searchController.dispose();
     _map.dispose();
     _parkCourses.dispose();
@@ -199,31 +227,49 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     );
   }
 
+  /// Runs the search the controls describe. A refresh of the search already
+  /// on screen (a pull, Retry, or the same parameters again) keeps its rows
+  /// until the new page lands, and if it fails keeps them under the stale
+  /// banner; only a different search clears them first.
   Future<void> _search() async {
+    _typing?.cancel();
     final api = widget.apiClient;
     if (api == null || api.userId == null) {
-      setState(() =>
-          _error = AppLocalizations.of(context).exploreRoutesSignInRequired);
+      setState(() {
+        _mode = _ExploreMode.search;
+        _blocked = _Blocked.signedOut;
+      });
       return;
     }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-      _results = [];
-      _hasMore = true;
-      _activeSearch = null;
-      _resultsNext = null;
-    });
 
     final text = _searchController.text.trim();
     final query = text.isEmpty ? null : text;
     final minDistanceM = _minDistance;
     final maxDistanceM = _maxDistance;
     final surface = _surfaceValue;
-    final tags = _selectedTags.isEmpty ? null : _selectedTags.toList();
+    final tags = _selectedTags.isEmpty ? null : (_selectedTags.toList()..sort());
     final featuredOnly = _featuredOnly;
     final sort = _sort;
+    final params = (query, minDistanceM, maxDistanceM, surface,
+        tags?.join(','), featuredOnly, sort);
+    final same = params == _shownSearch && _mode == _ExploreMode.search;
+    final read0 = ++_reads;
+
+    setState(() {
+      _mode = _ExploreMode.search;
+      _loading = true;
+      _error = null;
+      _blocked = null;
+      _appliedQuery = query;
+      if (!same) {
+        _results = [];
+        _shownSearch = null;
+        _hasMore = true;
+        _activeSearch = null;
+        _resultsNext = null;
+      }
+    });
+
     Future<cm.KeysetPage<cm.Route>> read(List<Object?>? after) =>
         api.searchPublicRoutes(
           query: query,
@@ -239,30 +285,57 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
 
     try {
       final page = await read(null).timeout(kBackendLoadTimeout);
-      if (!mounted) return;
+      if (!mounted || read0 != _reads) return;
       setState(() {
         _results = page.rows;
+        _shownSearch = params;
         _resultsNext = page.next;
         _activeSearch = read;
         _hasMore = page.next != null;
         _loading = false;
       });
       _checkParkCourses();
-    } on TimeoutException catch (e) {
-      debugPrint('ExploreRoutesScreen._search timed out: $e');
-      if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(context).exploreRoutesTimeout;
-        _loading = false;
-      });
     } catch (e, s) {
       debugPrint('ExploreRoutesScreen._search failed: $e\n$s');
-      if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(context).exploreRoutesSearchFailed;
-        _loading = false;
-      });
+      if (!mounted || read0 != _reads) return;
+      _failed(e);
     }
+  }
+
+  /// Counts the reads started, so the answer to one a newer read has
+  /// replaced (a keystroke since, Near me since) never lands over it.
+  int _reads = 0;
+
+  /// A read that failed: with rows on screen they stay, under the stale
+  /// banner that tells offline apart; with none, the error says which.
+  void _failed(Object e) {
+    final l10n = AppLocalizations.of(context);
+    if (_results.isNotEmpty) {
+      setState(() => _loading = false);
+      showStaleRefreshBanner(context, e);
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _error = e is TimeoutException
+          ? l10n.exploreRoutesTimeout
+          : classifyAuthError(e) == AuthErrorKind.offline
+              ? l10n.authErrorOffline
+              : _mode == _ExploreMode.nearMe
+                  ? l10n.exploreRoutesNearbyFailed
+                  : l10n.exploreRoutesSearchFailed;
+    });
+  }
+
+  /// Typing searches after a short pause, so the list always shows what
+  /// the field says; emptying the field (its clear) searches at once.
+  void _onSearchTyped(String text) {
+    _typing?.cancel();
+    if (text.trim().isEmpty) {
+      _search();
+      return;
+    }
+    _typing = Timer(_typingPause, _search);
   }
 
   Future<void> _loadMore() async {
@@ -294,81 +367,95 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     }
   }
 
+  /// Public routes within 50 km of a fix. Like [_search], a refresh while
+  /// Near me is on keeps the rows it has; turning it on clears them.
   Future<void> _searchNearby() async {
+    _typing?.cancel();
     final api = widget.apiClient;
     if (api == null || api.userId == null) {
-      setState(() =>
-          _error = AppLocalizations.of(context).exploreRoutesSignInRequired);
+      setState(() => _blocked = _Blocked.signedOut);
       return;
     }
-
+    final same = _mode == _ExploreMode.nearMe && _shownSearch == _nearby;
+    final read0 = ++_reads;
     setState(() {
+      _mode = _ExploreMode.nearMe;
       _loading = true;
       _error = null;
-      _results = [];
+      _blocked = null;
+      _appliedQuery = null;
       _hasMore = false;
       _activeSearch = null;
       _resultsNext = null;
+      if (!same) {
+        _results = [];
+        _shownSearch = null;
+      }
     });
 
+    final Position pos;
     try {
-      final Position pos;
-      try {
-        pos = await (widget.locateFn ?? locateForBrowse)();
-      } on PermissionDeniedException {
-        if (mounted) {
-          setState(() {
-            _error = AppLocalizations.of(context)
-                .exploreRoutesLocationPermissionRequired;
-            _loading = false;
-          });
-        }
-        return;
-      } catch (e) {
-        // Caught here, not below: a fix that never arrives is a
-        // TimeoutException too, and the outer catch would call it a
-        // backend timeout.
-        debugPrint('ExploreRoutesScreen._searchNearby locate failed: $e');
-        if (mounted) {
-          final l10n = AppLocalizations.of(context);
-          setState(() {
-            _error = l10n.exploreRoutesNearbyLocationUnavailable(
-                browseLocateErrorText(l10n, e));
-            _loading = false;
-          });
-        }
-        return;
+      pos = await (widget.locateFn ?? locateForBrowse)();
+    } on LocationPermanentlyDeniedException {
+      if (mounted && read0 == _reads) {
+        setState(() {
+          _blocked = _Blocked.locationOff;
+          _loading = false;
+        });
       }
+      return;
+    } on PermissionDeniedException {
+      if (mounted && read0 == _reads) {
+        setState(() {
+          _error = AppLocalizations.of(context)
+              .exploreRoutesLocationPermissionRequired;
+          _loading = false;
+        });
+      }
+      return;
+    } catch (e) {
+      // Caught here, not below: a fix that never arrives is a
+      // TimeoutException too, and the read's catch would call it a backend
+      // timeout.
+      debugPrint('ExploreRoutesScreen._searchNearby locate failed: $e');
+      if (mounted && read0 == _reads) {
+        final l10n = AppLocalizations.of(context);
+        setState(() {
+          _error = l10n.exploreRoutesNearbyLocationUnavailable(
+              browseLocateErrorText(l10n, e));
+          _loading = false;
+        });
+      }
+      return;
+    }
 
-      _moveMapTo(pos);
-      final results = await api.nearbyPublicRoutes(
-        lat: pos.latitude,
-        lng: pos.longitude,
-        radiusM: 50000,
-        limit: 50,
-      ).timeout(kBackendLoadTimeout);
-      if (!mounted) return;
+    if (!mounted || read0 != _reads) return;
+    _moveMapTo(pos);
+    try {
+      final results = await api
+          .nearbyPublicRoutes(
+            lat: pos.latitude,
+            lng: pos.longitude,
+            radiusM: 50000,
+            limit: 50,
+          )
+          .timeout(kBackendLoadTimeout);
+      if (!mounted || read0 != _reads) return;
       setState(() {
         _results = results;
+        _shownSearch = _nearby;
         _loading = false;
       });
       _checkParkCourses();
-    } on TimeoutException catch (e) {
-      debugPrint('ExploreRoutesScreen._searchNearby timed out: $e');
-      if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(context).exploreRoutesTimeout;
-        _loading = false;
-      });
     } catch (e, s) {
       debugPrint('ExploreRoutesScreen._searchNearby failed: $e\n$s');
-      if (!mounted) return;
-      setState(() {
-        _error = AppLocalizations.of(context).exploreRoutesNearbyFailed;
-        _loading = false;
-      });
+      if (!mounted || read0 != _reads) return;
+      _failed(e);
     }
   }
+
+  /// [_shownSearch] for the Near me results.
+  static const _nearby = #nearby;
 
   static const _metresPerMile = 1609.344;
 
@@ -473,9 +560,27 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     }
   }
 
-  void _setNearMe(bool on) {
-    setState(() => _mode = on ? _ExploreMode.nearMe : _ExploreMode.search);
-    on ? _searchNearby() : _search();
+  void _setNearMe(bool on) => on ? _searchNearby() : _search();
+
+  /// Clears every filter in the sheet, for the empty state's way out.
+  void _clearFilters() => _apply(() {
+        _distanceFilter = _DistanceFilter.any;
+        _surfaceFilter = _SurfaceFilter.any;
+        _sort = 'popular';
+        _featuredOnly = false;
+        _selectedTags.clear();
+      });
+
+  bool get _filtersOn =>
+      _distanceFilter != _DistanceFilter.any ||
+      _surfaceFilter != _SurfaceFilter.any ||
+      _sort != 'popular' ||
+      _featuredOnly ||
+      _selectedTags.isNotEmpty;
+
+  void _clearSearch() {
+    _searchController.clear();
+    _search();
   }
 
   /// Applies a filter change, which reruns the search.
@@ -512,9 +617,10 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
         'featured': l10n.exploreRoutesSortFeatured,
       };
 
-  /// Search and the Near me chip, after the Routes · Segments chips when the
-  /// Routes tab hosts this. Near me searches around a location fix rather
-  /// than by text and filters, so it hides both while it is on.
+  /// Search and Filters, after the Routes · Segments chips when the Routes
+  /// tab hosts this. Near me is a button on the map, so turning it on leaves
+  /// this bar exactly as it was; searching or filtering turns it off again,
+  /// and its active filters show only while they apply.
   FilterBar _filterBar(AppLocalizations l10n) {
     final nearMe = _mode == _ExploreMode.nearMe;
     ActiveFilter active(String label, VoidCallback onRemove) => ActiveFilter(
@@ -542,33 +648,38 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           ];
     return FilterBar(
       key: const ValueKey('explore-routes-filter-bar'),
-      search: nearMe
-          ? null
-          : AppSearchField(
-              controller: _searchController,
-              hint: l10n.exploreRoutesSearchHint,
-              clearTooltip: l10n.commonClearSearch,
-              onChanged: (v) {
-                if (v.isEmpty) _search();
-              },
-              onSubmitted: (_) => _search(),
-            ),
-      chips: [
-        ...?widget.chrome?.chips,
-        FilterChip(
-          avatar: const Icon(Icons.near_me, size: 18),
-          label: Text(l10n.exploreRoutesModeNearMe),
-          selected: nearMe,
-          showCheckmark: false,
-          onSelected: _setNearMe,
-        ),
-      ],
+      // Under the map the search is an icon at the chip line's end, so the
+      // controls are one row (decisions § 2610); on its own it keeps a row.
+      collapsibleSearch: widget.chrome != null,
+      searchApplied: !nearMe && _appliedQuery != null,
+      search: AppSearchField(
+        controller: _searchController,
+        hint: l10n.exploreRoutesSearchHint,
+        clearTooltip: l10n.commonClearSearch,
+        onChanged: _onSearchTyped,
+        onSubmitted: (_) => _search(),
+      ),
+      chips: [...?widget.chrome?.chips],
       activeFilters: filters,
-      filtersLabel: nearMe ? null : l10n.filterBarFilters,
+      filtersLabel: l10n.filterBarFilters,
       filtersSemanticLabel:
           filters.isEmpty ? null : l10n.filterBarFiltersCount(filters.length),
       activeFilterCount: filters.length,
-      onOpenFilters: nearMe ? null : () => _openFilters(l10n),
+      onOpenFilters: () => _openFilters(l10n),
+    );
+  }
+
+  /// Near me, the map's own locate control: labelled, at the end of the
+  /// map's button stack nearest the thumb, filled while it is on.
+  Widget _nearMeButton(AppLocalizations l10n) {
+    final on = _mode == _ExploreMode.nearMe;
+    return MapControlButton(
+      key: const ValueKey('explore-near-me'),
+      label: l10n.exploreRoutesModeNearMe,
+      icon: Icons.near_me_outlined,
+      selectedIcon: Icons.near_me,
+      selected: on,
+      onPressed: () => _setNearMe(!on),
     );
   }
 
@@ -660,8 +771,11 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     final bar = _filterBar(l10n);
     return HubTabBody(
       title: l10n.exploreRoutesTitle,
+      // A map never scrolls the hub's large title away; at a large text size
+      // it kept a sixth of a small phone from the map (decisions § 2610).
+      collapsesHubTitle: true,
       filters: widget.chrome?.above(bar) ?? bar,
-      onRefresh: _mode == _ExploreMode.nearMe ? _searchNearby : _search,
+      onRefresh: _refresh,
       // The map keeps the drags that start on it and the Fitness hub swipes
       // from the controls and the sheet, so Explore is a map inside the
       // hub's pages rather than a pushed screen (conventions § Mobile
@@ -672,7 +786,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           controller: _map,
           onOpen: _openPin,
         ),
-        footer: widget.maps,
+        controls: [...widget.mapButtons, _nearMeButton(l10n)],
         attribution: ExploreRoutesMap.credit(context),
         bottomClearance: DockedFabInset.of(context),
         // Snaps between a peek (the map), half (the map and the first few
@@ -695,31 +809,90 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     );
   }
 
+  Future<void> _refresh() =>
+      _mode == _ExploreMode.nearMe ? _searchNearby() : _search();
+
+  /// Why the search that ran found nothing, in one sentence, with the one
+  /// thing that would change it.
+  Widget _emptyState(AppLocalizations l10n) {
+    if (_mode == _ExploreMode.nearMe) {
+      return EmptyState(
+        key: const ValueKey('explore-empty-nearby'),
+        icon: Icons.near_me,
+        title: l10n.exploreRoutesEmptyNearby,
+        ctaLabel: l10n.exploreRoutesSearchEverywhere,
+        ctaIcon: Icons.public,
+        onCta: () => _setNearMe(false),
+      );
+    }
+    if (_appliedQuery != null) {
+      return EmptyState(
+        key: const ValueKey('explore-empty-search'),
+        icon: Icons.search_off,
+        title: l10n.exploreRoutesEmptyNoMatch,
+        ctaLabel: l10n.commonClearSearch,
+        ctaIcon: Icons.close,
+        onCta: _clearSearch,
+      );
+    }
+    if (_filtersOn) {
+      return EmptyState(
+        key: const ValueKey('explore-empty-filtered'),
+        icon: Icons.filter_alt_off,
+        title: l10n.exploreRoutesEmptyFiltered,
+        ctaLabel: l10n.routesClearFilters,
+        ctaIcon: Icons.filter_alt_off,
+        onCta: _clearFilters,
+      );
+    }
+    final build = widget.onBuildRoute;
+    return EmptyState(
+      key: const ValueKey('explore-empty-none'),
+      icon: Icons.explore,
+      title: l10n.exploreRoutesEmptyNone,
+      ctaLabel: build == null ? null : l10n.addRunBuildRoute,
+      ctaIcon: Icons.edit_road,
+      onCta: build,
+    );
+  }
+
   List<Widget> _bodySlivers(ThemeData theme, DistanceUnit unit) {
     final l10n = AppLocalizations.of(context);
+    switch (_blocked) {
+      case _Blocked.signedOut:
+        return [
+          SliverToBoxAdapter(
+            child: SignInRequiredState(
+              api: widget.apiClient,
+              message: l10n.exploreRoutesSignInToExplore,
+              onSignedIn: _refresh,
+            ),
+          ),
+        ];
+      case _Blocked.locationOff:
+        return [
+          SliverToBoxAdapter(
+            child: ErrorState(
+              key: const ValueKey('explore-location-off'),
+              icon: Icons.location_disabled,
+              message: l10n.exploreRoutesLocationOff,
+              retryLabel: l10n.runOpenSettings,
+              onRetry: () => unawaited(Geolocator.openAppSettings()),
+            ),
+          ),
+        ];
+      case null:
+    }
     if (_error != null) {
       return [
         SliverToBoxAdapter(
-          child: AppErrorState(
-            message: _error!,
-            onRetry: _mode == _ExploreMode.nearMe ? _searchNearby : _search,
-          ),
+          child: AppErrorState(message: _error!, onRetry: _refresh),
         ),
       ];
     }
 
     if (_results.isEmpty && !_loading) {
-      return [
-        SliverToBoxAdapter(
-          child: EmptyState(
-            icon: Icons.explore,
-            title: _searchController.text.isEmpty
-                ? l10n.exploreRoutesEmptyNoPublic
-                : l10n.exploreRoutesEmptyNoMatch,
-            body: l10n.exploreRoutesEmptyBody,
-          ),
-        ),
-      ];
+      return [SliverToBoxAdapter(child: _emptyState(l10n))];
     }
 
     return [
@@ -772,6 +945,9 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     ];
   }
 }
+
+/// Why Explore has nothing to show that a Retry cannot fix.
+enum _Blocked { signedOut, locationOff }
 
 /// One public route: its name on up to two lines across the card, then its
 /// distance, climb, surface and how often it has been run on one line, the

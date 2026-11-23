@@ -285,4 +285,66 @@ void main() {
     expect(tester.getRect(find.byType(IconButton)).left,
         greaterThanOrEqualTo(_bar));
   });
+
+  // decisions § 2610 (UX critique of PR #1468): a hub tab's control row lies
+  // over the top of the map, and at 2x the map's control stack ran up under
+  // it, a button half covered. The sheet keeps below the covered top, and
+  // the stack keeps the controls that fit, nearest the thumb first.
+  testWidgets('under a covered top the sheet keeps below it and the controls '
+      'that do not fit are not drawn', (tester) async {
+    const covered = 200.0;
+    await _pump(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+                padding: MediaQuery.paddingOf(context)
+                    .copyWith(top: covered)),
+            child: MapFirstPage(
+              map: _map,
+              controls: [
+                for (final label in ['first', 'second', 'third', 'nearest'])
+                  ElevatedButton(
+                      key: ValueKey(label),
+                      onPressed: () {},
+                      child: Text(label)),
+              ],
+              sheet: MapFirstSheet(
+                initialSize: 0.6,
+                minSize: 0.2,
+                maxSize: 0.85,
+                slivers: [
+                  SliverList.list(children: [
+                    for (var i = 0; i < 20; i++)
+                      SizedBox(height: 48, child: Text('row $i')),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final sheetTop = tester
+        .getRect(find
+            .descendant(
+                of: find.byKey(const ValueKey('map-first-sheet')),
+                matching: find.byType(Material))
+            .first)
+        .top;
+    expect(sheetTop, greaterThan(covered));
+    expect(tester.getRect(find.byKey(const ValueKey('nearest'))).bottom,
+        lessThanOrEqualTo(sheetTop));
+    expect(find.byKey(const ValueKey('nearest')).hitTestable(), findsOneWidget,
+        reason: 'the control nearest the thumb always shows');
+    for (final label in ['first', 'second', 'third', 'nearest']) {
+      final b = find.byKey(ValueKey(label));
+      if (b.hitTestable().evaluate().isEmpty) continue;
+      expect(tester.getRect(b).top, greaterThanOrEqualTo(covered),
+          reason: '$label is drawn whole below what covers the map');
+    }
+    expect(find.byKey(const ValueKey('first')).hitTestable(), findsNothing,
+        reason: 'one that does not fit is not drawn under the cover');
+  });
 }

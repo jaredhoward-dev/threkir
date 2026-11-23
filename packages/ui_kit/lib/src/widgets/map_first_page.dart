@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../theme/corner_radii.dart';
 import '../theme/spacing.dart';
@@ -151,51 +152,51 @@ class _MapFirstPageState extends State<MapFirstPage> {
   static Widget _sides(Widget child) =>
       SafeArea(top: false, bottom: false, child: child);
 
+  Widget _faded(bool show, Widget child) => IgnorePointer(
+        ignoring: !show,
+        child: AnimatedOpacity(
+          opacity: show ? 1 : 0,
+          duration: const Duration(milliseconds: 150),
+          child: child,
+        ),
+      );
+
+  /// One map control at the end edge, inside both gutters, so a long label
+  /// wraps inside the map's width rather than running off its start edge.
+  static Widget _control(Widget control) => Padding(
+        padding: const EdgeInsetsDirectional.only(
+            start: AppInsets.gutter, end: AppInsets.gutter, bottom: AppSpace.sm),
+        child: Align(alignment: AlignmentDirectional.centerEnd, child: control),
+      );
+
+  /// The floating column: the [MapFirstPage.controls], the footer, the
+  /// credit. Given a height to fit in ([maxHeight], the map between what
+  /// covers its top and the sheet), the controls show as many as fit, from
+  /// the bottom up, so the one nearest the thumb (Near me) stays and none is
+  /// drawn half under what covers the map; the rest return as the sheet is
+  /// lowered. The footer and the credit always show.
   Widget _floating({required bool showControls}) {
     final controls = widget.controls;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final footer = widget.footer;
+    final attribution = widget.attribution;
+    final pinned = <Widget>[
+      if (footer != null)
+        _faded(
+          showControls,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppInsets.gutter, 0, AppInsets.gutter, AppSpace.sm),
+            child: footer,
+          ),
+        ),
+      ?attribution,
+    ];
+    return _FitFromBottom(
+      key: const ValueKey('map-first-controls'),
+      pinned: pinned.length,
       children: [
-        if (controls.isNotEmpty)
-          IgnorePointer(
-            ignoring: !showControls,
-            child: AnimatedOpacity(
-              opacity: showControls ? 1 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Padding(
-                padding: const EdgeInsetsDirectional.only(
-                    end: AppInsets.gutter, bottom: AppSpace.sm),
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Column(
-                    key: const ValueKey('map-first-controls'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < controls.length; i++) ...[
-                        if (i > 0) const SizedBox(height: AppSpace.sm),
-                        controls[i],
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        if (widget.footer case final footer?)
-          IgnorePointer(
-            ignoring: !showControls,
-            child: AnimatedOpacity(
-              opacity: showControls ? 1 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppInsets.gutter, 0, AppInsets.gutter, AppSpace.sm),
-                child: footer,
-              ),
-            ),
-          ),
-        ?widget.attribution,
+        for (final c in controls) _faded(showControls, _control(c)),
+        ...pinned,
       ],
     );
   }
@@ -203,42 +204,63 @@ class _MapFirstPageState extends State<MapFirstPage> {
   Widget _mapArea(BuildContext context) {
     final sheet = widget.sheet;
     final standsOnSystemBar = widget.panel == null && sheet == null;
+    // What lies over the map's top (a hub tab's control row, which slides
+    // away over the map rather than resizing it). The map runs under it; the
+    // sheet and the overlays keep below it, and the sheet is a fraction of
+    // the height left, so the row moving never moves the sheet.
+    final covered = MediaQuery.paddingOf(context).top;
     return LayoutBuilder(builder: (context, box) {
-      final height = box.maxHeight;
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          widget.map,
-          if (sheet == null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                bottom: standsOnSystemBar,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      bottom: standsOnSystemBar ? widget.bottomClearance : 0),
-                  child: _floating(showControls: true),
-                ),
-              ),
-            )
-          else
-            ValueListenableBuilder<double>(
-              valueListenable: _extent,
-              builder: (context, extent, child) => Positioned(
+      final height = box.maxHeight - covered;
+      return MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.map,
+            if (sheet == null)
+              Positioned(
                 left: 0,
                 right: 0,
-                bottom: extent * height,
-                child: _sides(
-                    _floating(showControls: extent <= _kControlsRideLimit)),
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  bottom: standsOnSystemBar,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        bottom: standsOnSystemBar ? widget.bottomClearance : 0),
+                    child: _floating(showControls: true),
+                  ),
+                ),
+              )
+            else
+              ValueListenableBuilder<double>(
+                valueListenable: _extent,
+                builder: (context, extent, child) => Positioned(
+                  left: 0,
+                  right: 0,
+                  top: covered,
+                  bottom: extent * height,
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: _sides(_floating(
+                        showControls: extent <= _kControlsRideLimit)),
+                  ),
+                ),
               ),
-            ),
-          for (final overlay in widget.overlays)
-            Positioned(top: 0, left: 0, right: 0, child: _sides(overlay)),
-          if (sheet != null) _sheet(context, sheet),
-        ],
+            for (final overlay in widget.overlays)
+              Positioned(
+                  top: covered, left: 0, right: 0, child: _sides(overlay)),
+            if (sheet != null)
+              Positioned(
+                top: covered,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _sheet(context, sheet),
+              ),
+          ],
+        ),
       );
     });
   }
@@ -350,5 +372,117 @@ class _MapFirstPageState extends State<MapFirstPage> {
     final appBar = widget.appBar;
     if (appBar == null) return body;
     return Scaffold(appBar: appBar, body: body);
+  }
+}
+
+/// The floating column laid out from the bottom up at the full width: the
+/// last [pinned] children (the footer, the credit) always, then as many of
+/// the others (the controls) as fit the height left, nearest the thumb first.
+/// A control that does not fit is neither painted, hit nor read, rather than
+/// drawn half under what covers the map. Unbounded, every child shows.
+class _FitFromBottom extends MultiChildRenderObjectWidget {
+  const _FitFromBottom({
+    super.key,
+    required this.pinned,
+    required super.children,
+  });
+
+  final int pinned;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderFitFromBottom(pinned: pinned);
+
+  @override
+  void updateRenderObject(
+          BuildContext context, _RenderFitFromBottom renderObject) =>
+      renderObject.pinned = pinned;
+}
+
+class _FitParentData extends ContainerBoxParentData<RenderBox> {
+  bool shown = true;
+}
+
+class _RenderFitFromBottom extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FitParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FitParentData> {
+  _RenderFitFromBottom({required int pinned}) : _pinned = pinned;
+
+  int _pinned;
+  set pinned(int value) {
+    if (value == _pinned) return;
+    _pinned = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FitParentData) {
+      child.parentData = _FitParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final children = getChildrenAsList();
+    final width = constraints.maxWidth;
+    final each = BoxConstraints.tightFor(width: width);
+    var used = 0.0;
+    var full = false;
+    for (var i = children.length - 1; i >= 0; i--) {
+      final c = children[i];
+      c.layout(each, parentUsesSize: true);
+      final data = c.parentData! as _FitParentData;
+      final pinned = i >= children.length - _pinned;
+      data.shown = pinned ||
+          (!full && used + c.size.height <= constraints.maxHeight);
+      if (data.shown) {
+        used += c.size.height;
+      } else {
+        full = true;
+      }
+    }
+    final height = constraints.constrainHeight(used);
+    var y = height;
+    for (var i = children.length - 1; i >= 0; i--) {
+      final c = children[i];
+      final data = c.parentData! as _FitParentData;
+      if (!data.shown) continue;
+      y -= c.size.height;
+      data.offset = Offset(0, y);
+    }
+    size = Size(width, height);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    for (final c in getChildrenAsList()) {
+      final data = c.parentData! as _FitParentData;
+      if (data.shown) context.paintChild(c, offset + data.offset);
+    }
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    for (final c in getChildrenAsList().reversed) {
+      final data = c.parentData! as _FitParentData;
+      if (!data.shown) continue;
+      final hit = result.addWithPaintOffset(
+        offset: data.offset,
+        position: position,
+        hitTest: (result, transformed) =>
+            c.hitTest(result, position: transformed),
+      );
+      if (hit) return true;
+    }
+    return false;
+  }
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    for (final c in getChildrenAsList()) {
+      if ((c.parentData! as _FitParentData).shown) visitor(c);
+    }
   }
 }

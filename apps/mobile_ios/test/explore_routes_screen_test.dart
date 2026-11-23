@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui' show SemanticsFlag;
 
 import 'package:api_client/api_client.dart';
 import 'package:core_models/core_models.dart' as cm;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInputAction;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,13 +16,17 @@ import 'package:ui_kit/ui_kit.dart'
         AppSearchField,
         AppSpace,
         AppTheme,
+        ChoiceChipOption,
+        buildChoiceChip,
         HubPrimaryActions,
         HubTabScope,
+        MapControlButton,
         PageHeading;
 import '../lib/fab_clearance.dart';
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/local_route_store.dart';
 import '../lib/preferences.dart';
+import '../lib/quiet_location.dart' show LocationPermanentlyDeniedException;
 import '../lib/routes_views.dart';
 import '../lib/screens/explore_routes_screen.dart';
 import 'supabase_test_init.dart';
@@ -160,6 +166,7 @@ void main() {
   setUpAll(_ensureSupabase);
   _mapFirstTests();
   _layoutTests();
+  _critiqueTests();
 
   group('ExploreRoutesScreen — initial render', () {
     testWidgets('renders the Explore Routes app-bar title', (tester) async {
@@ -188,13 +195,20 @@ void main() {
       expect(find.byTooltip('Remove filter: Featured'), findsOneWidget);
     });
 
-    testWidgets('one search field, with clear, and Near me as the quick chip',
-        (tester) async {
+    testWidgets('one search field, with clear, and Near me a button on the '
+        'map', (tester) async {
       final s = await _makeStores();
       await _pump(tester, prefs: s.prefs, routeStore: s.routeStore);
       await tester.pump();
       expect(find.byType(AppSearchField), findsOneWidget);
-      expect(find.widgetWithText(FilterChip, 'Near Me'), findsOneWidget);
+      final nearMe = find.byKey(const ValueKey('explore-near-me'));
+      expect(find.descendant(of: nearMe, matching: find.text('Near me')),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('map-first-controls')),
+              matching: nearMe),
+          findsOneWidget);
     });
 
     // Under the Routes tab (issue #1374, decisions § 2490) the tab hands this
@@ -225,7 +239,6 @@ void main() {
 
       final viewBar = find.byKey(const Key('test-view-bar'));
       final chip = find.byKey(const Key('test-chip-routes'));
-      final nearMe = find.widgetWithText(FilterChip, 'Near Me');
       final row = find.text('Morning loop');
       expect(viewBar, findsOneWidget);
       expect(chip, findsOneWidget);
@@ -233,8 +246,6 @@ void main() {
       expect(tester.getTopLeft(viewBar).dy,
           lessThan(tester.getTopLeft(chip).dy));
       expect(tester.getTopLeft(chip).dy, lessThan(tester.getTopLeft(row).dy));
-      expect(tester.getTopLeft(chip).dx, lessThan(tester.getTopLeft(nearMe).dx),
-          reason: 'the view chips lead the body\'s own');
     });
   });
 
@@ -341,7 +352,7 @@ void main() {
           api: api,
           locateFn: () async => _fix(37.54, -77.43));
       await tester.pump();
-      await tester.tap(find.text('Near Me'));
+      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
       await tester.pump();
       await tester.pump();
       expect(api.nearbyCalls, [(37.54, -77.43)]);
@@ -359,7 +370,7 @@ void main() {
           locateFn: () async =>
               throw const PermissionDeniedException('denied'));
       await tester.pump();
-      await tester.tap(find.text('Near Me'));
+      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
       await tester.pump();
       await tester.pump();
       expect(api.nearbyCalls, isEmpty);
@@ -379,7 +390,7 @@ void main() {
           locateFn: () async =>
               throw const LocationServiceDisabledException());
       await tester.pump();
-      await tester.tap(find.text('Near Me'));
+      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
       await tester.pump();
       await tester.pump();
       expect(api.nearbyCalls, isEmpty);
@@ -399,7 +410,7 @@ void main() {
           api: api,
           locateFn: () async => throw TimeoutException('no fix'));
       await tester.pump();
-      await tester.tap(find.text('Near Me'));
+      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
       await tester.pump();
       await tester.pump();
       expect(api.nearbyCalls, isEmpty);
@@ -694,22 +705,19 @@ Widget _hostedExplore({
                   ),
                 ],
               ),
-              maps: Wrap(
-                key: const Key('test-maps'),
-                spacing: AppSpace.sm,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.local_fire_department),
-                    label: Text(l10n.routesHeatmapTooltip),
-                    onPressed: () {},
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.person_pin_circle_outlined),
-                    label: Text(l10n.runHeatmapTooltip),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
+              mapButtons: [
+                MapControlButton(
+                  key: const Key('test-maps'),
+                  icon: Icons.local_fire_department_outlined,
+                  label: l10n.routesHeatmapTooltip,
+                  onPressed: () {},
+                ),
+                MapControlButton(
+                  icon: Icons.person_pin_circle_outlined,
+                  label: l10n.runHeatmapTitle,
+                  onPressed: () {},
+                ),
+              ],
             ),
           ),
         ),
@@ -891,4 +899,393 @@ class _OfficialApi extends _BookmarkApi {
   @override
   Future<Set<String>> fetchParkCourseRouteIds(Iterable<String> ids) async =>
       {};
+}
+
+/// A signed-in viewer whose search answers are scripted per call: rows for a
+/// query, an error to throw next, and every query asked for.
+class _ScriptedApi extends _BookmarkApi {
+  _ScriptedApi({this.signedIn = true});
+
+  final bool signedIn;
+  final queries = <String?>[];
+  List<cm.Route> rows = [_route('r1', 'Morning loop')];
+  List<cm.Route> nearby = [_route('n1', 'Riverside 10K')];
+  Object? failNext;
+
+  @override
+  String? get userId => signedIn ? 'u1' : null;
+
+  @override
+  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
+    String? query,
+    double? minDistanceM,
+    double? maxDistanceM,
+    String? surface,
+    List<String>? tags,
+    bool featuredOnly = false,
+    String sort = 'newest',
+    int limit = 50,
+    List<Object?>? after,
+  }) async {
+    if (after != null) return const cm.KeysetPage(<cm.Route>[], null);
+    queries.add(query);
+    final fail = failNext;
+    failNext = null;
+    if (fail != null) throw fail;
+    return cm.KeysetPage(rows, null);
+  }
+
+  @override
+  Future<List<cm.Route>> nearbyPublicRoutes({
+    required double lat,
+    required double lng,
+    double radiusM = 50000,
+    int limit = 50,
+  }) async =>
+      nearby;
+}
+
+/// Explore hosted in the Routes tab's shape: a view row, the Routes ·
+/// Segments chips with their icons, and a hub scope.
+Widget _scriptedHost({
+  required Preferences prefs,
+  required LocalRouteStore routeStore,
+  required ApiClient api,
+  required HubPrimaryActions actions,
+  Future<Position> Function()? locateFn,
+  VoidCallback? onBuildRoute,
+  double textScale = 1,
+  Locale locale = const Locale('en'),
+}) =>
+    MaterialApp(
+      theme: AppTheme.light,
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
+      home: Builder(builder: (context) {
+        final l10n = AppLocalizations.of(context);
+        return Scaffold(
+          body: HubTabScope(
+            tab: 'routes',
+            actions: actions,
+            child: ExploreRoutesScreen(
+              apiClient: api,
+              routeStore: routeStore,
+              preferences: prefs,
+              locateFn: locateFn,
+              onBuildRoute: onBuildRoute,
+              chrome: RoutesExploreChrome(
+                viewBar: const SizedBox(height: 56),
+                chips: [
+                  for (final (label, icon, on) in [
+                    (l10n.fitnessRunsRoutes, Icons.route, true),
+                    (l10n.runSurfaceTabSegments, Icons.timeline, false),
+                  ])
+                    buildChoiceChip<bool>(
+                        context,
+                        ChoiceChipOption(value: on, label: label, icon: icon),
+                        true,
+                        (_) {}),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+
+void _critiqueTests() {
+  // UX critique of PR #1468 (reviews/ux-critic-mobile-training-explore.md).
+  group('ExploreRoutesScreen — UX critique', () {
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    final nearMe = find.byKey(const ValueKey('explore-near-me'));
+    final searchIcon = find.byKey(const Key('filter-bar-search'));
+    final filters = find.byKey(const Key('filter-bar-filters'));
+
+    // Finding 1 and 8: Near me is a labelled map button, and turning it on
+    // leaves the bar exactly as it was.
+    testWidgets('Near me is a labelled button on the map; turning it on moves '
+        'no chip or icon', (tester) async {
+      await _setView(tester, const Size(412, 915), FakeViewPadding.zero);
+      final s = await _makeStores();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+        prefs: s.prefs,
+        routeStore: s.routeStore,
+        api: _ScriptedApi(),
+        actions: actions,
+        locateFn: () async => _fix(37.54, -77.43),
+      ));
+      await settle(tester);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('map-first-controls')),
+              matching: nearMe),
+          findsOneWidget);
+      expect(find.descendant(of: nearMe, matching: find.text('Near me')),
+          findsOneWidget);
+      expect(tester.getSize(nearMe).height,
+          greaterThanOrEqualTo(kMinInteractiveDimension));
+      Map<String, Rect> bar() => {
+            'routes': tester.getRect(find.widgetWithText(ChoiceChip, 'Routes')),
+            'segments':
+                tester.getRect(find.widgetWithText(ChoiceChip, 'Segments')),
+            'search': tester.getRect(searchIcon),
+            'filters': tester.getRect(filters),
+          };
+      final before = bar();
+      await tester.tap(nearMe);
+      await settle(tester);
+      expect(find.text('Riverside 10K'), findsOneWidget);
+      expect(bar(), before, reason: 'the bar does not reflow');
+      expect(
+          tester
+              .getSemantics(find.descendant(
+                  of: nearMe, matching: find.text('Near me')))
+              .hasFlag(SemanticsFlag.isToggled),
+          isTrue,
+          reason: 'heard as on');
+    });
+
+    for (final (size, scale) in [
+      (const Size(412, 915), 1.0),
+      (kWorstCasePhone, kWorstCaseTextScale),
+    ]) {
+      for (final locale in kWorstCaseLocales) {
+        testWidgets('Routes, Segments, search and Filters are all on screen at '
+            '${size.width.toInt()} dp, ${scale}x, $locale', (tester) async {
+          await _setView(tester, size, FakeViewPadding.zero);
+          final s = await _makeStores();
+          final actions = HubPrimaryActions();
+          addTearDown(actions.dispose);
+          await tester.pumpWidget(_scriptedHost(
+            prefs: s.prefs,
+            routeStore: s.routeStore,
+            api: _ScriptedApi(),
+            actions: actions,
+            textScale: scale,
+            locale: locale,
+          ));
+          await settle(tester);
+          expect(tester.takeException(), isNull);
+          final icon = tester.getRect(searchIcon);
+          final f = tester.getRect(filters);
+          expect(f.right, lessThanOrEqualTo(size.width));
+          expect(f.left, greaterThanOrEqualTo(icon.right - 0.5));
+          for (final chip in find.byType(ChoiceChip).evaluate()) {
+            final r = tester.getRect(find.byWidget(chip.widget));
+            expect(r.left, greaterThanOrEqualTo(0));
+            expect(r.right, lessThanOrEqualTo(size.width));
+            expect(r.overlaps(icon.expandToInclude(f)), isFalse,
+                reason: 'no chip is pushed off screen or under the icons');
+          }
+          for (final label in ['Routes', 'Segments']) {
+            final text = find.descendant(
+                of: find.byType(ChoiceChip), matching: find.byType(Text));
+            for (final t in text.evaluate()) {
+              final p = tester.renderObject<RenderParagraph>(
+                  find.byWidget(t.widget));
+              expect(p.didExceedMaxLines, isFalse, reason: '$label is whole');
+            }
+          }
+          expect(find.byIcon(Icons.timeline), findsOneWidget,
+              reason: 'Segments leads with its own glyph, not a blank');
+        });
+      }
+    }
+
+    // Finding 2: a failed refresh of the same search keeps the rows.
+    testWidgets('a refresh that fails offline keeps the rows and says so; a '
+        'new search clears them', (tester) async {
+      final s = await _makeStores();
+      final api = _ScriptedApi();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: api,
+          actions: actions));
+      await settle(tester);
+      expect(find.text('Morning loop'), findsOneWidget);
+      api.failNext = TimeoutException('offline');
+      unawaited(tester
+          .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
+          .show());
+      await tester.pump(const Duration(seconds: 2));
+      await settle(tester);
+      expect(find.text('Morning loop'), findsOneWidget,
+          reason: 'the rows on screen stay');
+      expect(find.text("You're offline. Showing what was last loaded."),
+          findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+
+      api.rows = [_route('h1', 'Hill reps')];
+      await tester.tap(searchIcon);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump(const Duration(milliseconds: 450));
+      await settle(tester);
+      expect(find.text('Morning loop'), findsNothing);
+      expect(find.text('Hill reps'), findsOneWidget);
+    });
+
+    // Finding 4: typing searches after a short pause; Search runs at once.
+    testWidgets('typing runs the search after a short pause, the keyboard\'s '
+        'Search at once', (tester) async {
+      final s = await _makeStores();
+      final api = _ScriptedApi();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: api,
+          actions: actions));
+      await settle(tester);
+      expect(api.queries, [null]);
+      await tester.tap(searchIcon);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'hil');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(api.queries, [null], reason: 'still typing');
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(api.queries, [null, 'hill'], reason: 'one search for the pause');
+      await tester.enterText(find.byType(TextField), 'river');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      expect(api.queries.last, 'river');
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(api.queries, [null, 'hill', 'river'],
+          reason: 'Search ran it; the pause does not run it again');
+    });
+
+    // Finding 5: a live query keeps the chips in reach.
+    testWidgets('a live search keeps Routes and Segments on screen, under the '
+        'field', (tester) async {
+      final s = await _makeStores();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: _ScriptedApi(),
+          actions: actions));
+      await settle(tester);
+      await tester.tap(searchIcon);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump(const Duration(milliseconds: 450));
+      await settle(tester);
+      final field = tester.getRect(find.byType(TextField));
+      final segments =
+          tester.getRect(find.widgetWithText(ChoiceChip, 'Segments'));
+      expect(segments.top, greaterThanOrEqualTo(field.bottom));
+      expect(actions.consumeBack('routes'), isTrue,
+          reason: 'Back closes the search first');
+      await settle(tester);
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    // Finding 3: no Retry that can never succeed.
+    testWidgets('signed out, the way forward is Sign in', (tester) async {
+      final s = await _makeStores();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: _ScriptedApi(signedIn: false),
+          actions: actions));
+      await settle(tester);
+      expect(find.text('Sign in to explore routes others have shared.'),
+          findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    testWidgets('location refused for good offers Open settings, not Retry',
+        (tester) async {
+      final s = await _makeStores();
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: _ScriptedApi(),
+          actions: actions,
+          locateFn: () async =>
+              throw const LocationPermanentlyDeniedException()));
+      await settle(tester);
+      await tester.tap(nearMe);
+      await settle(tester);
+      expect(
+          find.text('Location is off for this app. Turn it on in Settings to '
+              'see routes near you.'),
+          findsOneWidget);
+      expect(find.text('Open settings'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+    });
+
+    // Finding 7: each empty state says why, with its one way forward.
+    testWidgets('each empty state names its cause and its one action',
+        (tester) async {
+      final s = await _makeStores();
+      final api = _ScriptedApi()..rows = const [];
+      api.nearby = const [];
+      var built = 0;
+      final actions = HubPrimaryActions();
+      addTearDown(actions.dispose);
+      await tester.pumpWidget(_scriptedHost(
+          prefs: s.prefs,
+          routeStore: s.routeStore,
+          api: api,
+          actions: actions,
+          onBuildRoute: () => built++,
+          locateFn: () async => _fix(37.54, -77.43)));
+      await settle(tester);
+      expect(find.text('No one has shared a route yet.'), findsOneWidget);
+      await tester.tap(find.text('Build a route'));
+      expect(built, 1);
+
+      await tester.tap(filters);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Featured'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(find.text('No routes match these filters.'), findsOneWidget);
+      await tester.tap(find.text('Clear filters'));
+      await settle(tester);
+      expect(find.text('No one has shared a route yet.'), findsOneWidget);
+
+      await tester.tap(nearMe);
+      await settle(tester);
+      expect(find.text('No public routes within 50 km of you yet.'),
+          findsOneWidget);
+      await tester.tap(find.text('Search everywhere'));
+      await settle(tester);
+      expect(find.text('No one has shared a route yet.'), findsOneWidget);
+
+      await tester.tap(searchIcon);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'zzz');
+      await tester.pump(const Duration(milliseconds: 450));
+      await settle(tester);
+      expect(find.text('No routes match your search'), findsOneWidget);
+    });
+  });
 }

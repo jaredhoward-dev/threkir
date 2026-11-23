@@ -35,8 +35,11 @@ import 'pushed_page.dart';
 /// tabs. The title scrolls away with the first scroll of any tab and the
 /// strip pins under the compact bar, as a pushed `HubTabBody` does with its
 /// controls. The collapse is shared by the tabs, so switching tab never moves
-/// the strip, and each tab keeps its own scroll position. The bar title's
-/// fade follows reduce-motion (`motionDuration`).
+/// the strip, and each tab keeps its own scroll position; the one exception
+/// is a tab that never scrolls (a map), which collapses the title as it
+/// shows ([collapseTitle]). The title row is one height whether a tab
+/// shows an action or not, so a tab's ⋮ never moves the strip either. The
+/// bar title's fade follows reduce-motion (`motionDuration`).
 ///
 /// [RootPage.new] is a root whose body is one scroll view of its own (Today,
 /// You), under the header. The body does not say the title again.
@@ -50,7 +53,8 @@ class RootPage extends StatefulWidget {
     this.floatingActionButtonLocation,
   }) : controller = null,
        labels = const [],
-       children = const [];
+       children = const [],
+       collapseTitle = null;
 
   const RootPage.tabbed({
     super.key,
@@ -61,6 +65,7 @@ class RootPage extends StatefulWidget {
     this.actions = const [],
     this.floatingActionButton,
     this.floatingActionButtonLocation,
+    this.collapseTitle,
   }) : body = null;
 
   /// The bottom-nav label of this destination, said in full in the header.
@@ -84,6 +89,13 @@ class RootPage extends StatefulWidget {
   final Widget? floatingActionButton;
   final FloatingActionButtonLocation? floatingActionButtonLocation;
 
+  /// On a hub, true while the showing tab is content that never scrolls the
+  /// page (a map, `HubTabBody.collapsesHubTitle`): the title then collapses
+  /// into the compact bar as if the tab had scrolled, and stays collapsed
+  /// when the next tab shows, as a scrolled tab leaves it, so the strip only
+  /// moves when a map asks for the room (decisions § 2610).
+  final ValueListenable<bool>? collapseTitle;
+
   @override
   State<RootPage> createState() => _RootPageState();
 }
@@ -96,10 +108,51 @@ class _RootPageState extends State<RootPage> {
   /// Whether the compact bar is showing, as the header last laid out.
   final _barShown = ValueNotifier(false);
 
+  /// The page's own scroll, whose extent is what the title can shrink by.
+  final _outer = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.collapseTitle?.addListener(_onCollapseTitle);
+    if (widget.collapseTitle?.value ?? false) _onCollapseTitle();
+  }
+
+  @override
+  void didUpdateWidget(RootPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.collapseTitle != widget.collapseTitle) {
+      oldWidget.collapseTitle?.removeListener(_onCollapseTitle);
+      widget.collapseTitle?.addListener(_onCollapseTitle);
+      _onCollapseTitle();
+    }
+  }
+
   @override
   void dispose() {
+    widget.collapseTitle?.removeListener(_onCollapseTitle);
+    _outer.dispose();
     _barShown.dispose();
     super.dispose();
+  }
+
+  void _onCollapseTitle() {
+    if (!(widget.collapseTitle?.value ?? false)) return;
+    // After the frame: the header may not have laid out its extent yet.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_outer.hasClients) return;
+      final position = _outer.position;
+      final to = position.maxScrollExtent;
+      if (position.pixels >= to) return;
+      final duration = motionDuration(context, AppMotion.standard);
+      if (duration == Duration.zero) {
+        position.jumpTo(to);
+      } else {
+        position.animateTo(to,
+            duration: duration, curve: AppMotion.curveStandard);
+      }
+    });
+    SchedulerBinding.instance.ensureVisualUpdate();
   }
 
   void _onBarShown(bool shown) {
@@ -117,11 +170,16 @@ class _RootPageState extends State<RootPage> {
     final barColor = _barColor(theme, scrolled: true);
     final toolbarHeight = barTheme.toolbarHeight ?? kToolbarHeight;
     final overlay = _overlayStyle(theme, restColor);
-    final padding = EdgeInsets.fromLTRB(
+    // The row is never shorter than an action, and its padding is what
+    // leaves it the compact bar's height at 1.0x, so a tab with a ⋮ and a
+    // tab without one put the strip at the same height: with 16 + 8 around
+    // the row, a tab's ⋮ made it 72 dp where its neighbours' was 56, and
+    // the strip moved 16 dp on every switch between them (decisions § 2610).
+    const padding = EdgeInsets.fromLTRB(
       AppInsets.gutter,
-      AppSpace.md,
-      actions.isEmpty ? AppInsets.gutter : AppSpace.xs,
-      AppSpace.sm,
+      AppSpace.xs,
+      AppSpace.xs,
+      AppSpace.xs,
     );
 
     final header = _RootHeader(
@@ -129,8 +187,8 @@ class _RootPageState extends State<RootPage> {
       // An action that draws nothing (the Fitness hub's ⋮ on a tab with no
       // menu) still made the row narrow its end padding for an icon button
       // that isn't there; the header then keeps the gutter itself.
-      emptyActionsInset:
-          actions.isEmpty ? 0 : AppInsets.gutter - AppSpace.xs,
+      emptyActionsInset: AppInsets.gutter - AppSpace.xs,
+      minRowExtent: kMinInteractiveDimension,
       collapsedExtent: toolbarHeight,
       textDirection: Directionality.of(context),
       onBarShown: _onBarShown,
@@ -217,6 +275,7 @@ class _RootPageState extends State<RootPage> {
                     child: PinnedHeaderScope(
                       headerKey: _edge,
                       child: NestedScrollView(
+                        controller: _outer,
                         headerSliverBuilder: (context, _) => [header],
                         body: nestedBody,
                       ),
@@ -270,6 +329,7 @@ class _RootHeader extends SlottedMultiChildRenderObjectWidget<_Slot, RenderBox> 
   const _RootHeader({
     required this.padding,
     required this.emptyActionsInset,
+    required this.minRowExtent,
     required this.collapsedExtent,
     required this.textDirection,
     required this.onBarShown,
@@ -284,6 +344,9 @@ class _RootHeader extends SlottedMultiChildRenderObjectWidget<_Slot, RenderBox> 
 
   /// What the end of the row keeps clear when the actions lay out zero wide.
   final double emptyActionsInset;
+
+  /// The title row's least height, an action's, whether or not one shows.
+  final double minRowExtent;
   final double collapsedExtent;
   final TextDirection textDirection;
   final ValueChanged<bool> onBarShown;
@@ -308,6 +371,7 @@ class _RootHeader extends SlottedMultiChildRenderObjectWidget<_Slot, RenderBox> 
       _RenderRootHeader(
         padding: padding,
         emptyActionsInset: emptyActionsInset,
+        minRowExtent: minRowExtent,
         collapsedExtent: collapsedExtent,
         textDirection: textDirection,
         onBarShown: onBarShown,
@@ -321,6 +385,7 @@ class _RootHeader extends SlottedMultiChildRenderObjectWidget<_Slot, RenderBox> 
     renderObject
       ..padding = padding
       ..emptyActionsInset = emptyActionsInset
+      ..minRowExtent = minRowExtent
       ..collapsedExtent = collapsedExtent
       ..textDirection = textDirection
       ..onBarShown = onBarShown;
@@ -332,11 +397,13 @@ class _RenderRootHeader extends RenderSliver
   _RenderRootHeader({
     required EdgeInsets padding,
     required double emptyActionsInset,
+    required double minRowExtent,
     required double collapsedExtent,
     required TextDirection textDirection,
     required this.onBarShown,
   })  : _padding = padding,
         _emptyActionsInset = emptyActionsInset,
+        _minRowExtent = minRowExtent,
         _collapsedExtent = collapsedExtent,
         _textDirection = textDirection;
 
@@ -353,6 +420,14 @@ class _RenderRootHeader extends RenderSliver
   set emptyActionsInset(double value) {
     if (value == _emptyActionsInset) return;
     _emptyActionsInset = value;
+    markNeedsLayout();
+  }
+
+  double get minRowExtent => _minRowExtent;
+  double _minRowExtent;
+  set minRowExtent(double value) {
+    if (value == _minRowExtent) return;
+    _minRowExtent = value;
     markNeedsLayout();
   }
 
@@ -411,7 +486,8 @@ class _RenderRootHeader extends RenderSliver
       0.0,
       _expanded.size.height - padding.top - padding.bottom,
     );
-    final row = math.max(heading, actionsSize.height);
+    final row =
+        math.max(math.max(heading, actionsSize.height), minRowExtent);
     final full = padding.top + row + padding.bottom;
     final collapsed = math.min(collapsedExtent, full);
     final maxShrink = full - collapsed;

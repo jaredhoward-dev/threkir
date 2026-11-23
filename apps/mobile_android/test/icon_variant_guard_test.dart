@@ -50,9 +50,15 @@ const _roots = ['lib', '../../packages/ui_kit/lib'];
 /// it filled while the club is verified and outlined while it is not, so the
 /// variant IS the state.
 ///
+/// `near_me` is a toggle: Explore's Near me `MapControlButton(selected: on)`
+/// in `explore_routes_screen.dart` draws it outlined while the list is not
+/// sorted by distance from you and filled while it is, so the variant IS the
+/// state.
+///
 const _selectionPairs = <String>{
   'cloud_upload',
   'emoji_events',
+  'near_me',
   'push_pin',
   'verified',
 };

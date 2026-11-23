@@ -4040,9 +4040,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get routesStarForWatch => 'Marcar para mostrar en el reloj';
 
   @override
-  String get routesDiscover => 'Descubrir';
-
-  @override
   String get routesViewGroup => 'Sección de rutas';
 
   @override
@@ -4058,7 +4055,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get routesPublicRoutes => 'Rutas públicas';
 
   @override
-  String get routesHeatmapTooltip => 'Mapa de calor de rutas';
+  String get routesHeatmapTooltip => 'Rutas populares';
 
   @override
   String get routesSearchHint => 'Buscar rutas por nombre…';
@@ -5157,10 +5154,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get exploreRoutesFeatured => 'Destacadas';
 
   @override
-  String get exploreRoutesSignInRequired =>
-      'Inicia sesión y conéctate a Internet para explorar rutas';
-
-  @override
   String get exploreRoutesTimeout =>
       'Se agotó el tiempo de conexión. Comprueba tu red e inténtalo de nuevo.';
 
@@ -5186,15 +5179,30 @@ class AppLocalizationsEs extends AppLocalizations {
       'No se pudieron encontrar rutas cercanas. Toca Reintentar para volver a intentarlo.';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'Aún no hay rutas públicas';
-
-  @override
   String get exploreRoutesEmptyNoMatch =>
       'Ninguna ruta coincide con tu búsqueda';
 
   @override
-  String get exploreRoutesEmptyBody =>
-      'Las rutas compartidas desde la app web aparecen aquí';
+  String get exploreRoutesSignInToExplore =>
+      'Inicia sesión para explorar las rutas que otros han compartido.';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'La ubicación está desactivada para esta app. Actívala en Ajustes para ver rutas cerca de ti.';
+
+  @override
+  String get exploreRoutesEmptyFiltered =>
+      'Ninguna ruta coincide con estos filtros.';
+
+  @override
+  String get exploreRoutesEmptyNearby =>
+      'Aún no hay rutas públicas en un radio de 50 km.';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'Buscar en todas partes';
+
+  @override
+  String get exploreRoutesEmptyNone => 'Nadie ha compartido una ruta todavía.';
 
   @override
   String get exploreRoutesDistanceAny => 'Cualquier distancia';
@@ -5373,10 +5381,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get heatmapLensHiddenGems => 'Joyas ocultas';
 
   @override
-  String get runHeatmapTitle => 'Tu mapa de calor';
-
-  @override
-  String get runHeatmapTooltip => 'Mapa de calor de carreras';
+  String get runHeatmapTitle => 'Por dónde has corrido';
 
   @override
   String get runHeatmapLoading => 'Cargando tus carreras…';
@@ -24330,7 +24335,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get filterBarSource => 'Fuente';
 
   @override
-  String get runsSearchHint => 'Buscar actividades por nombre';
+  String get runsSearchHint => 'Buscar actividades';
 
   @override
   String get filterBarRegion => 'Región';

@@ -45,9 +45,10 @@ import 'runs_screen.dart';
 ///
 /// The hub is a ui_kit `RootPage.tabbed`, as the Social hub is: the hub's
 /// name ([fitnessHubTitle], the label the bottom nav shows) in a large title
-/// over the strip, which collapses into a compact bar as a tab scrolls, and
-/// the one FAB: every tab body is a ui_kit `HubTabBody`, which inside
-/// the hub's [HubTabScope] draws no app bar or title of its own, puts its
+/// over the strip, which collapses into a compact bar as a tab scrolls (or
+/// as soon as Explore's map shows, which never scrolls it), and the one
+/// FAB: every tab body is a ui_kit `HubTabBody`, which inside the hub's
+/// [HubTabScope] draws no app bar or title of its own, puts its
 /// secondary actions in its control row and hands its primary action to the
 /// hub, which shows the active tab's as its FAB (issue #1374). A tab's
 /// occasional actions (Runs' Add past run and Import, Races' Add a race) go
@@ -181,6 +182,13 @@ class _FitnessHubScreenState extends State<FitnessHubScreen>
   late final RaceService _raceService = RaceService();
   final _actions = HubPrimaryActions();
 
+  /// Whether the showing tab is a map that asks for the compact bar
+  /// (Routes → Explore → Routes), which the hub's title then collapses into.
+  final _collapseTitle = ValueNotifier(false);
+
+  void _updateCollapseTitle() =>
+      _collapseTitle.value = _actions.wantsCompactTitle(_tab.value);
+
   /// Back goes to the showing tab first (a Runs or Routes selection).
   @override
   bool handleShellBack() => _actions.consumeBack(_tab.value);
@@ -219,7 +227,9 @@ class _FitnessHubScreenState extends State<FitnessHubScreen>
     _settleSelection();
     _tab
       ..addListener(_adoptTab)
-      ..addListener(_rememberTab);
+      ..addListener(_rememberTab)
+      ..addListener(_updateCollapseTitle);
+    _actions.addListener(_updateCollapseTitle);
     widget.preferences.addListener(_onVisibilityInputs);
     widget.gymStore.addListener(_onVisibilityInputs);
     widget.foodStore.addListener(_onVisibilityInputs);
@@ -280,12 +290,15 @@ class _FitnessHubScreenState extends State<FitnessHubScreen>
     widget.foodStore.removeListener(_onVisibilityInputs);
     widget.gymStore.removeListener(_onVisibilityInputs);
     widget.preferences.removeListener(_onVisibilityInputs);
+    _actions.removeListener(_updateCollapseTitle);
     _tab
+      ..removeListener(_updateCollapseTitle)
       ..removeListener(_rememberTab)
       ..removeListener(_adoptTab);
     _tabSet.dispose();
     if (_ownsTab) _tab.dispose();
     _actions.dispose();
+    _collapseTitle.dispose();
     super.dispose();
   }
 
@@ -313,6 +326,7 @@ class _FitnessHubScreenState extends State<FitnessHubScreen>
         nutritionShown: _nutritionShown,
       ),
       controller: _controller,
+      collapseTitle: _collapseTitle,
       labels: [
         for (final t in _tabs) t.label(l10n),
       ],
