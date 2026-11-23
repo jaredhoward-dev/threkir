@@ -2439,8 +2439,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String runOffRoute(int metres) {
-    return 'Off route — ${metres}m away';
+  String runOffRoute(String distance) {
+    return 'Off route — $distance away';
   }
 
   @override

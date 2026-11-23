@@ -86,6 +86,10 @@ class _SpyAudioCues extends AudioCues {
 
   final bool throwOnCue;
   final List<String> spoken = [];
+  int offRouteCues = 0;
+
+  @override
+  Future<void> announceOffRoute() async => offRouteCues++;
 
   @override
   Future<void> announceGuidedCue(String text) async {
@@ -300,11 +304,13 @@ void main() {
     Future<List<LiveCourseCandidate>> Function(double lat, double lng)? nearby,
     Future<GlobalSegmentGeometry?> Function(String routeId)? lookup,
     cm.Route? route,
+    bool miles = false,
   }) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = Preferences();
     await prefs.init();
     await markPreRunDialogsSeen(prefs);
+    if (miles) await prefs.setUseMiles(true);
 
     final runStore = _CapturingRunStore();
     await runStore.init(overrideDirectory: runsDir);
@@ -510,10 +516,11 @@ void main() {
   });
 
   String chipText(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(
-          of: find.byKey(const ValueKey('run-top-chip')),
-          matching: find.byType(Text)))
+      .widget<Text>(find.byKey(const ValueKey('run-top-chip-label')))
       .data!;
+
+  const hint = 'Timing starts when you leave the start box.';
+  const chipHint = ValueKey('run-top-chip-hint');
 
   testWidgets(
       'the top chip counts down to the start, says the start box, then counts '
@@ -546,17 +553,83 @@ void main() {
 
   testWidgets(
       'starting on a followed course says once that timing starts on leaving '
-      'the start box', (tester) async {
-    const hint = 'Timing starts when you leave the start box.';
+      'the start box, and the chip keeps saying it until timing starts',
+      (tester) async {
+    final s = await pumpRunScreen(tester,
+        course: _course, route: _routeWithWalkIn);
+    await tester.pump();
+    await startRecording(tester);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+    expect(find.byKey(const ValueKey('course-timing-cue')), findsNothing,
+        reason: 'the big card is for Timing started and Finished only');
+
+    await runEast(tester, -100, -60);
+    expect(chipText(tester), '60 m to the start');
+    expect(tester.widget<Text>(find.byKey(chipHint)).data, hint);
+    expect(find.byKey(const ValueKey('course-timing-cue')), findsNothing);
+
+    await tester.pump(const Duration(seconds: 10));
+    await runEast(tester, -56, -4);
+    expect(chipText(tester), 'In the start box');
+    expect(tester.widget<Text>(find.byKey(chipHint)).data, hint,
+        reason: 'still there when the runner reaches the box');
+
+    await runEast(tester, 0, 60);
+    expect(find.text('Timing started'), findsOneWidget);
+    expect(find.byKey(chipHint), findsNothing);
+    expect(find.text(hint), findsNothing);
+    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'heading to the start of a followed course far from the route line '
+      'shows and says no off-route warning', (tester) async {
     final s = await pumpRunScreen(tester, course: _course);
     await tester.pump();
     await startRecording(tester);
-    expect(find.text(hint), findsOneWidget);
-    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+    await runThrough(tester, [(-20, 300), (-20, 200)]);
 
-    await runEast(tester, -20, 60);
-    expect(find.text('Timing started'), findsOneWidget);
-    expect(s.cues.spoken.where((t) => t == hint), hasLength(1));
+    expect(chipText(tester), endsWith('to the start'));
+    expect(find.textContaining('Off route'), findsNothing);
+    expect(find.byKey(const ValueKey('route-off-route')), findsNothing);
+    expect(s.cues.offRouteCues, 0);
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets(
+      'following a route that is no park course, the off-route warning shows '
+      'and is said, in the runner\'s unit', (tester) async {
+    final s = await pumpRunScreen(tester, course: null, miles: true);
+    await tester.pump();
+    await startRecording(tester);
+    await runThrough(tester, [(-20, 300), (-20, 200)]);
+
+    final banner = tester
+        .widget<Text>(find.descendant(
+            of: find.byKey(const ValueKey('route-off-route')),
+            matching: find.byType(Text)))
+        .data!;
+    expect(banner, matches(RegExp(r'^Off route — [\d,]+ yd away$')),
+        reason: 'about 200 m is yards to a miles runner, not metres');
+    expect(s.cues.offRouteCues, 1);
+
+    await holdFinish(tester);
+    await unmount(tester);
+  });
+
+  testWidgets('the off-route warning reads metres to a km runner',
+      (tester) async {
+    await pumpRunScreen(tester, course: null);
+    await tester.pump();
+    await startRecording(tester);
+    await runThrough(tester, [(-20, 300), (-20, 200)]);
+    expect(find.textContaining(RegExp(r'^Off route — \d+ m away$')),
+        findsOneWidget);
 
     await holdFinish(tester);
     await unmount(tester);

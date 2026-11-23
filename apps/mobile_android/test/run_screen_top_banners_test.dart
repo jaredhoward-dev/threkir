@@ -11,7 +11,7 @@ import 'worst_case_layout.dart';
 Future<void> _pump(
   WidgetTester tester, {
   String? offCourseMessage,
-  double? offRouteMetres,
+  String? offRouteDistance,
   bool permissionLost = false,
   bool gpsLost = false,
   bool weakGps = false,
@@ -28,7 +28,7 @@ Future<void> _pump(
           alignment: Alignment.topCenter,
           child: RunTopBanners(
             offCourseMessage: offCourseMessage,
-            offRouteMetres: offRouteMetres,
+            offRouteDistance: offRouteDistance,
             permissionLost: permissionLost,
             gpsLost: gpsLost,
             weakGps: weakGps,
@@ -47,7 +47,7 @@ Future<void> _pump(
 Rect _cardOf(WidgetTester tester, String text) => tester.getRect(
     find.ancestor(of: find.text(text), matching: find.byType(Card)).first);
 
-const _offRoute = 'Off route — 120m away';
+const _offRoute = 'Off route — 120 m away';
 const _gpsLost = 'GPS signal lost — move to open sky';
 
 void main() {
@@ -67,7 +67,7 @@ void main() {
             alignment: Alignment.topCenter,
             child: SingleChildScrollView(
               child: RunTopBanners(
-                offRouteMetres: 120,
+                offRouteDistance: '120 m',
                 permissionLost: permissionLost,
                 gpsLost: gpsLost,
                 weakGps: weakGps,
@@ -84,6 +84,39 @@ void main() {
       await tester.pump();
     });
   }
+
+  // The top chip with its start-box hint wraps beside the live-share
+  // indicator rather than running off a 320 dp phone at 2x.
+  worstCaseTestWidgets('Run top chip with the start-box hint',
+      (tester, locale) async {
+    await tester.pumpWidget(worstCaseApp(
+      locale: locale,
+      home: Scaffold(
+        body: Builder(builder: (context) {
+          final l10n = AppLocalizations.of(context);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(width: 48, height: 48),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: RunTopChip(
+                    label: l10n.runCourseToStart('5.99 mi'),
+                    hint: l10n.runCourseTimingHint,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }),
+      ),
+    ));
+    await tester.pump();
+    final chip = tester.getRect(find.byKey(const ValueKey('run-top-chip')));
+    expect(chip.right, lessThanOrEqualTo(kWorstCasePhone.width));
+    expect(find.byKey(const ValueKey('run-top-chip-hint')), findsOneWidget);
+  });
 
   // #1446: a timed park course's off-course warning is one plain sentence
   // naming the fix, with an icon so it never rests on colour alone.
@@ -116,7 +149,7 @@ void main() {
           child: SingleChildScrollView(
             child: RunTopBanners(
               offCourseMessage: l10n.runCourseOffCourseCheckpoint(12),
-              offRouteMetres: null,
+              offRouteDistance: null,
               permissionLost: false,
               gpsLost: true,
               weakGps: false,
@@ -147,7 +180,7 @@ void main() {
               bottomClearance: clearance,
               badges: const SizedBox(key: _badgeKey, height: 40),
               banners: RunTopBanners(
-                offRouteMetres: 120,
+                offRouteDistance: '120 m',
                 permissionLost: false,
                 gpsLost: true,
                 weakGps: false,
@@ -176,7 +209,7 @@ void main() {
 
   testWidgets('off-route + GPS-lost render together without overlapping '
       '(issue #666 V10)', (tester) async {
-    await _pump(tester, offRouteMetres: 120, gpsLost: true);
+    await _pump(tester, offRouteDistance: '120 m', gpsLost: true);
     expect(find.text(_offRoute), findsOneWidget);
     expect(find.text(_gpsLost), findsOneWidget);
     final offRoute = _cardOf(tester, _offRoute);
@@ -188,7 +221,7 @@ void main() {
   testWidgets('all three layers stack vertically: off-route, status, nudge',
       (tester) async {
     await _pump(tester,
-        offRouteMetres: 120, gpsLost: true, safetyNudgeVisible: true);
+        offRouteDistance: '120 m', gpsLost: true, safetyNudgeVisible: true);
     final offRoute = _cardOf(tester, _offRoute);
     final gps = _cardOf(tester, _gpsLost);
     final nudge = tester.getRect(find.byType(SafetyNudgeBanner));
@@ -266,7 +299,7 @@ void main() {
   group('RunTopOverlay — the armed-workout case (issue #666 A3)', () {
     testWidgets('the workout band stacks above the badges and the banners, '
         'never over them', (tester) async {
-      await _pumpOverlay(tester, armed: true, offRouteMetres: 120,
+      await _pumpOverlay(tester, armed: true, offRouteDistance: '120 m',
           gpsLost: true);
 
       final band = tester.getRect(find.byType(WorkoutExecutionBand));
@@ -286,7 +319,7 @@ void main() {
 
     testWidgets('no workout armed leaves the badges at the column top',
         (tester) async {
-      await _pumpOverlay(tester, armed: false, offRouteMetres: 120);
+      await _pumpOverlay(tester, armed: false, offRouteDistance: '120 m');
       expect(find.byType(WorkoutExecutionBand), findsNothing);
       final badge = tester.getRect(find.byKey(_badgeKey));
       expect(badge.top, RunTopOverlay.topInset);
@@ -325,7 +358,7 @@ WorkoutBandState _bandState() => WorkoutBandState(
 Future<void> _pumpOverlay(
   WidgetTester tester, {
   required bool armed,
-  double? offRouteMetres,
+  String? offRouteDistance,
   bool gpsLost = false,
   double topPadding = 0,
 }) {
@@ -352,7 +385,7 @@ Future<void> _pumpOverlay(
                     : null,
                 badges: const SizedBox(key: _badgeKey, height: 40),
                 banners: RunTopBanners(
-                  offRouteMetres: offRouteMetres,
+                  offRouteDistance: offRouteDistance,
                   permissionLost: false,
                   gpsLost: gpsLost,
                   weakGps: false,
