@@ -18,6 +18,7 @@ import '../lib/local_gym_store.dart';
 import '../lib/local_route_store.dart';
 import '../lib/local_run_store.dart';
 import '../lib/preferences.dart';
+import '../lib/screens/explore_routes_screen.dart';
 import '../lib/screens/fitness_hub_screen.dart';
 import '../lib/training_service.dart';
 import 'three_button_nav_bar.dart' show kThreeButtonNavBar;
@@ -154,7 +155,16 @@ void main() {
       final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
       expect(tester.getCenter(icon).dy, moreOrLessEquals(line.center.dy));
       expect(tester.getCenter(filters).dy, moreOrLessEquals(line.center.dy));
-      expect(contentTop(tester, 412) - strip(tester).bottom, 116);
+      // Over a map the row lies on the page, so the map starts where the
+      // row ends.
+      final row = find.descendant(
+          of: find.byType(ExploreRoutesScreen),
+          matching: find.byKey(const Key('hub-tab-controls')));
+      // 172 dp with the search a row of its own. The test font is wider
+      // than a device's, so the chips may wrap here; on a phone they share
+      // one row (decisions § 2610's renders), and the search row is gone
+      // either way.
+      expect(tester.getRect(row).bottom - strip(tester).bottom, lessThan(172));
     });
 
     // Runs' search, filters and kind chips held 116 dp above a list on the

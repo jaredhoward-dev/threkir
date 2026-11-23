@@ -100,11 +100,10 @@ Future<Position> locateForBrowse({
   var perm = await checkPermission();
   if (perm == LocationPermission.denied) perm = await requestPermission();
   if (!_granted(perm)) {
-    throw PermissionDeniedException(
-      perm == LocationPermission.deniedForever
-          ? 'Location permission denied forever'
-          : 'Location permission denied',
-    );
+    if (perm == LocationPermission.deniedForever) {
+      throw const LocationPermanentlyDeniedException();
+    }
+    throw const PermissionDeniedException('Location permission denied');
   }
   try {
     return await currentPosition().timeout(timeout);
@@ -143,3 +142,12 @@ Future<Position?> _lastKnownPosition() =>
 
 Future<Position> _currentPosition() =>
     Geolocator.getCurrentPosition(locationSettings: browseLocationSettings());
+
+/// The OS will not ask again: the permission was refused for good, so only
+/// the app's settings page can turn location back on, and a Retry never
+/// could. Still a [PermissionDeniedException], so a caller that only knows
+/// that one keeps working.
+class LocationPermanentlyDeniedException extends PermissionDeniedException {
+  const LocationPermanentlyDeniedException()
+      : super('Location permission denied forever');
+}

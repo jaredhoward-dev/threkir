@@ -227,19 +227,21 @@ void main() {
     });
 
     testWidgets(
-        'Explore floats both heatmaps on its map when an api client is wired, '
-        'and has none without one', (tester) async {
+        'Explore floats both other maps on its map, beside Near me, when an '
+        'api client is wired, and has none without one', (tester) async {
       final prefs = await _makePrefs();
       await _pump(tester,
           prefs: prefs, api: _FakeApi(), initialShow: RoutesShow.routes);
       await tester.pump();
-      // Community routes heatmap + the user's own run heatmap, both as
-      // labelled buttons. Both labels carry their qualifier since the
-      // siblings sit side by side.
-      final routesMap = find.widgetWithText(ElevatedButton, 'Routes heatmap');
-      final runMap = find.widgetWithText(ElevatedButton, 'Run heatmap');
+      // The community routes heatmap and the user's own, as labelled map
+      // buttons in plain words, stacked with Near me (decisions § 2610).
+      final routesMap = find.widgetWithText(ElevatedButton, 'Popular routes');
+      final runMap = find.widgetWithText(ElevatedButton, "Where you've run");
       expect(routesMap, findsOneWidget);
       expect(runMap, findsOneWidget);
+      final controls = find.byKey(const ValueKey('map-first-controls'));
+      expect(find.descendant(of: controls, matching: routesMap), findsOneWidget);
+      expect(find.descendant(of: controls, matching: runMap), findsOneWidget);
       // On the map, not heading the list in its sheet (decisions § 2609).
       final sheet = find.byKey(const ValueKey('map-first-sheet'));
       expect(find.descendant(of: sheet, matching: routesMap), findsNothing);
@@ -256,10 +258,10 @@ void main() {
       await tester.tap(find.descendant(
           of: find.byKey(const Key('view-switch')), matching: find.text('Explore')));
       await tester.pump();
-      expect(find.widgetWithText(ElevatedButton, 'Routes heatmap'),
+      expect(find.widgetWithText(ElevatedButton, 'Popular routes'),
           findsNothing);
-      expect(
-          find.widgetWithText(ElevatedButton, 'Run heatmap'), findsNothing);
+      expect(find.widgetWithText(ElevatedButton, "Where you've run"),
+          findsNothing);
     });
 
     testWidgets('hides the cloud-sync icon when apiClient is null',
@@ -869,23 +871,19 @@ void main() {
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'no overflow stripe');
 
+        // The two other maps and Near me, stacked at the map's end edge:
+        // each whole on screen, a long label taking a second line rather
+        // than the screen's edge, each a full-height target.
         final maps = find.descendant(
-            of: find.byKey(const ValueKey('routes-discover-strip')),
+            of: find.byKey(const ValueKey('map-first-controls')),
             matching: find.byType(ElevatedButton));
-        expect(maps, findsNWidgets(2));
-        // Wrapped, never scrolled sideways: each button is whole on screen,
-        // a long label taking a second line rather than the screen's edge.
+        expect(maps, findsNWidgets(3));
         expectInsideScreen(tester, maps, 'map button');
-        for (var i = 0; i < 2; i++) {
+        for (var i = 0; i < 3; i++) {
           expect(tester.getSize(maps.at(i)).height,
               greaterThanOrEqualTo(kMinInteractiveDimension),
               reason: 'map button #$i keeps a full-height target');
         }
-        expect(
-            find.byWidgetPredicate(
-                (w) => w is Semantics && w.properties.label == 'Discover'),
-            findsOneWidget,
-            reason: 'the strip is still named for assistive tech');
       });
 
       testWidgets('at ${scale}x the view switch and Explore chips sit on screen',

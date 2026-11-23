@@ -4042,9 +4042,6 @@ class AppLocalizationsPt extends AppLocalizations {
   String get routesStarForWatch => 'Marcar para mostrar no relógio';
 
   @override
-  String get routesDiscover => 'Descobrir';
-
-  @override
   String get routesViewGroup => 'Secção de rotas';
 
   @override
@@ -4060,7 +4057,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get routesPublicRoutes => 'Rotas públicas';
 
   @override
-  String get routesHeatmapTooltip => 'Mapa de calor das rotas';
+  String get routesHeatmapTooltip => 'Rotas populares';
 
   @override
   String get routesSearchHint => 'Pesquisar rotas por nome…';
@@ -5164,10 +5161,6 @@ class AppLocalizationsPt extends AppLocalizations {
   String get exploreRoutesFeatured => 'Destaque';
 
   @override
-  String get exploreRoutesSignInRequired =>
-      'Inicie sessão e ligue-se à internet para explorar rotas';
-
-  @override
   String get exploreRoutesTimeout =>
       'A ligação expirou. Verifique a sua rede e tente novamente.';
 
@@ -5193,15 +5186,30 @@ class AppLocalizationsPt extends AppLocalizations {
       'Não foi possível encontrar rotas próximas. Toque em Tentar novamente.';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'Nenhuma rota pública ainda';
-
-  @override
   String get exploreRoutesEmptyNoMatch =>
       'Nenhuma rota corresponde à sua pesquisa';
 
   @override
-  String get exploreRoutesEmptyBody =>
-      'As rotas partilhadas pela app web aparecem aqui';
+  String get exploreRoutesSignInToExplore =>
+      'Inicie sessão para explorar rotas que outras pessoas partilharam.';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'A localização está desligada para esta app. Ative-a nas Definições para ver rotas por perto.';
+
+  @override
+  String get exploreRoutesEmptyFiltered =>
+      'Nenhuma rota corresponde a estes filtros.';
+
+  @override
+  String get exploreRoutesEmptyNearby =>
+      'Ainda não há rotas públicas num raio de 50 km.';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'Pesquisar em todo o lado';
+
+  @override
+  String get exploreRoutesEmptyNone => 'Ainda ninguém partilhou uma rota.';
 
   @override
   String get exploreRoutesDistanceAny => 'Qualquer distância';
@@ -5380,10 +5388,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get heatmapLensHiddenGems => 'Joias escondidas';
 
   @override
-  String get runHeatmapTitle => 'O seu mapa de calor';
-
-  @override
-  String get runHeatmapTooltip => 'Mapa de calor de corridas';
+  String get runHeatmapTitle => 'Onde já correu';
 
   @override
   String get runHeatmapLoading => 'A carregar as suas corridas…';
@@ -24354,7 +24359,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get filterBarSource => 'Fonte';
 
   @override
-  String get runsSearchHint => 'Pesquisar corridas pelo nome';
+  String get runsSearchHint => 'Pesquisar corridas';
 
   @override
   String get filterBarRegion => 'Região';
@@ -28488,9 +28493,6 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get routesStarForWatch => 'Marcar para mostrar no relógio';
 
   @override
-  String get routesDiscover => 'Descobrir';
-
-  @override
   String get routesViewGroup => 'Seção de rotas';
 
   @override
@@ -28506,7 +28508,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get routesPublicRoutes => 'Rotas públicas';
 
   @override
-  String get routesHeatmapTooltip => 'Mapa de calor das rotas';
+  String get routesHeatmapTooltip => 'Rotas populares';
 
   @override
   String get routesSearchHint => 'Buscar rotas por nome…';
@@ -29610,10 +29612,6 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get exploreRoutesFeatured => 'Destaque';
 
   @override
-  String get exploreRoutesSignInRequired =>
-      'Faça login e conecte-se à internet para explorar rotas';
-
-  @override
   String get exploreRoutesTimeout =>
       'A conexão expirou. Verifique sua rede e tente novamente.';
 
@@ -29639,15 +29637,30 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
       'Não foi possível encontrar rotas próximas. Toque em Tentar novamente.';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'Nenhuma rota pública ainda';
-
-  @override
   String get exploreRoutesEmptyNoMatch =>
       'Nenhuma rota corresponde à sua busca';
 
   @override
-  String get exploreRoutesEmptyBody =>
-      'As rotas compartilhadas pelo app web aparecem aqui';
+  String get exploreRoutesSignInToExplore =>
+      'Faça login para explorar rotas que outras pessoas compartilharam.';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'A localização está desativada para este app. Ative nas Configurações para ver rotas perto de você.';
+
+  @override
+  String get exploreRoutesEmptyFiltered =>
+      'Nenhuma rota corresponde a esses filtros.';
+
+  @override
+  String get exploreRoutesEmptyNearby =>
+      'Ainda não há rotas públicas num raio de 50 km.';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'Buscar em todos os lugares';
+
+  @override
+  String get exploreRoutesEmptyNone => 'Ninguém compartilhou uma rota ainda.';
 
   @override
   String get exploreRoutesDistanceAny => 'Qualquer distância';
@@ -29826,10 +29839,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get heatmapLensHiddenGems => 'Joias escondidas';
 
   @override
-  String get runHeatmapTitle => 'Seu mapa de calor';
-
-  @override
-  String get runHeatmapTooltip => 'Mapa de calor de corridas';
+  String get runHeatmapTitle => 'Onde você já correu';
 
   @override
   String get runHeatmapLoading => 'Carregando suas corridas…';
@@ -48781,7 +48791,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get filterBarSource => 'Origem';
 
   @override
-  String get runsSearchHint => 'Buscar corridas pelo nome';
+  String get runsSearchHint => 'Buscar corridas';
 
   @override
   String get filterBarRegion => 'Região';

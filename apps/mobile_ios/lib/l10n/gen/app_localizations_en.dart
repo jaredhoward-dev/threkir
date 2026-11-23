@@ -3987,9 +3987,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routesStarForWatch => 'Star to show on watch';
 
   @override
-  String get routesDiscover => 'Discover';
-
-  @override
   String get routesViewGroup => 'Routes section';
 
   @override
@@ -4005,7 +4002,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get routesPublicRoutes => 'Public routes';
 
   @override
-  String get routesHeatmapTooltip => 'Routes heatmap';
+  String get routesHeatmapTooltip => 'Popular routes';
 
   @override
   String get routesSearchHint => 'Search routes by name…';
@@ -5092,17 +5089,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exploreRoutesTitle => 'Explore Routes';
 
   @override
-  String get exploreRoutesModeNearMe => 'Near Me';
+  String get exploreRoutesModeNearMe => 'Near me';
 
   @override
   String get exploreRoutesSearchHint => 'Search routes by name…';
 
   @override
   String get exploreRoutesFeatured => 'Featured';
-
-  @override
-  String get exploreRoutesSignInRequired =>
-      'Sign in and connect to the internet to explore routes';
 
   @override
   String get exploreRoutesTimeout =>
@@ -5130,14 +5123,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not find nearby routes. Tap retry to try again.';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'No public routes yet';
-
-  @override
   String get exploreRoutesEmptyNoMatch => 'No routes match your search';
 
   @override
-  String get exploreRoutesEmptyBody =>
-      'Routes shared from the web app appear here';
+  String get exploreRoutesSignInToExplore =>
+      'Sign in to explore routes others have shared.';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'Location is off for this app. Turn it on in Settings to see routes near you.';
+
+  @override
+  String get exploreRoutesEmptyFiltered => 'No routes match these filters.';
+
+  @override
+  String get exploreRoutesEmptyNearby =>
+      'No public routes within 50 km of you yet.';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'Search everywhere';
+
+  @override
+  String get exploreRoutesEmptyNone => 'No one has shared a route yet.';
 
   @override
   String get exploreRoutesDistanceAny => 'Any distance';
@@ -5315,10 +5322,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get heatmapLensHiddenGems => 'Hidden gems';
 
   @override
-  String get runHeatmapTitle => 'Your heatmap';
-
-  @override
-  String get runHeatmapTooltip => 'Run heatmap';
+  String get runHeatmapTitle => 'Where you\'ve run';
 
   @override
   String get runHeatmapLoading => 'Loading your runs…';
@@ -24075,7 +24079,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filterBarSource => 'Source';
 
   @override
-  String get runsSearchHint => 'Search run names';
+  String get runsSearchHint => 'Search runs';
 
   @override
   String get filterBarRegion => 'Region';

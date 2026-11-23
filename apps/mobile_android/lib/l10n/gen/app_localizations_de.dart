@@ -4043,9 +4043,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get routesStarForWatch => 'Markieren, um auf der Uhr anzuzeigen';
 
   @override
-  String get routesDiscover => 'Entdecken';
-
-  @override
   String get routesViewGroup => 'Routen-Bereich';
 
   @override
@@ -4061,7 +4058,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get routesPublicRoutes => 'Öffentliche Routen';
 
   @override
-  String get routesHeatmapTooltip => 'Routen-Heatmap';
+  String get routesHeatmapTooltip => 'Beliebte Routen';
 
   @override
   String get routesSearchHint => 'Routen nach Namen suchen…';
@@ -5170,10 +5167,6 @@ class AppLocalizationsDe extends AppLocalizations {
   String get exploreRoutesFeatured => 'Empfohlen';
 
   @override
-  String get exploreRoutesSignInRequired =>
-      'Melde dich an und stelle eine Internetverbindung her, um Routen zu erkunden';
-
-  @override
   String get exploreRoutesTimeout =>
       'Zeitüberschreitung der Verbindung. Überprüfe dein Netzwerk und versuche es erneut.';
 
@@ -5199,15 +5192,30 @@ class AppLocalizationsDe extends AppLocalizations {
       'Routen in der Nähe konnten nicht gefunden werden. Tippe auf Wiederholen, um es erneut zu versuchen.';
 
   @override
-  String get exploreRoutesEmptyNoPublic => 'Noch keine öffentlichen Routen';
-
-  @override
   String get exploreRoutesEmptyNoMatch =>
       'Keine Routen entsprechen deiner Suche';
 
   @override
-  String get exploreRoutesEmptyBody =>
-      'Vom Web-App geteilte Routen erscheinen hier';
+  String get exploreRoutesSignInToExplore =>
+      'Melde dich an, um Routen zu erkunden, die andere geteilt haben.';
+
+  @override
+  String get exploreRoutesLocationOff =>
+      'Der Standort ist für diese App ausgeschaltet. Schalte ihn in den Einstellungen ein, um Routen in deiner Nähe zu sehen.';
+
+  @override
+  String get exploreRoutesEmptyFiltered =>
+      'Keine Routen passen zu diesen Filtern.';
+
+  @override
+  String get exploreRoutesEmptyNearby =>
+      'Noch keine öffentlichen Routen im Umkreis von 50 km.';
+
+  @override
+  String get exploreRoutesSearchEverywhere => 'Überall suchen';
+
+  @override
+  String get exploreRoutesEmptyNone => 'Noch hat niemand eine Route geteilt.';
 
   @override
   String get exploreRoutesDistanceAny => 'Beliebige Distanz';
@@ -5387,10 +5395,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get heatmapLensHiddenGems => 'Geheimtipps';
 
   @override
-  String get runHeatmapTitle => 'Deine Heatmap';
-
-  @override
-  String get runHeatmapTooltip => 'Lauf-Heatmap';
+  String get runHeatmapTitle => 'Wo du gelaufen bist';
 
   @override
   String get runHeatmapLoading => 'Deine Läufe werden geladen …';
@@ -24330,7 +24335,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get filterBarSource => 'Quelle';
 
   @override
-  String get runsSearchHint => 'Läufe nach Namen suchen';
+  String get runsSearchHint => 'Läufe suchen';
 
   @override
   String get filterBarRegion => 'Region';

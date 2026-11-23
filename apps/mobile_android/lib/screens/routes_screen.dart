@@ -17,6 +17,7 @@ import 'package:ui_kit/ui_kit.dart'
         FilterToggle,
         HubSelection,
         HubTabBody,
+        MapControlButton,
         ListCard,
         ListSummary,
         PrimaryAction,
@@ -762,7 +763,8 @@ class RoutesScreenState extends State<RoutesScreen> {
             routeStore: widget.routeStore,
             preferences: widget.preferences,
             chrome: chrome,
-            maps: _mapsStrip(l10n),
+            mapButtons: _mapButtons(l10n),
+            onBuildRoute: widget.apiClient == null ? null : _openBuilder,
           )
         else
           const SizedBox.shrink(),
@@ -806,10 +808,16 @@ class RoutesScreenState extends State<RoutesScreen> {
   /// Routes · Segments, leading each Explore view's chip line.
   List<Widget> _exploreChips(AppLocalizations l10n) => [
         for (final o in [
+          // An icon each, so the slot the check takes is never a blank in
+          // front of the label.
           ChoiceChipOption(
-              value: RoutesShow.routes, label: l10n.fitnessRunsRoutes),
+              value: RoutesShow.routes,
+              label: l10n.fitnessRunsRoutes,
+              icon: Icons.route),
           ChoiceChipOption(
-              value: RoutesShow.segments, label: l10n.runSurfaceTabSegments),
+              value: RoutesShow.segments,
+              label: l10n.runSurfaceTabSegments,
+              icon: Icons.timeline),
         ])
           buildChoiceChip<RoutesShow>(
               context, o, _show.value, (v) => _show.value = v),
@@ -1272,31 +1280,25 @@ class RoutesScreenState extends State<RoutesScreen> {
             : null,
       );
 
-  /// The discovery maps on Explore → Routes: the community routes heatmap
-  /// (discoverable-route, club and race pins) and the runner's own run
-  /// heatmap, as two labelled buttons floating at the foot of Explore's map,
-  /// raised on the surface colour so they read over any tile without drawing
-  /// the eye the way a filled button would.
-  /// Null without an api client, which both maps read from.
+  /// The other maps on Explore → Routes, as map buttons stacked above Near
+  /// me: the routes people run (discoverable-route, club and race pins as
+  /// heat) and where the runner has run. Empty without an api client, which
+  /// both maps read from.
   ///
-  /// They are other maps, so they sit on the map rather than heading the list:
-  /// as two tall tiles at the top of the sheet they took the place of the
-  /// routes a runner came to see, and left one route on a phone (decisions
-  /// § 2609). Each keeps its label, because icon-only actions proved
-  /// undiscoverable for both heatmaps (§ 1954); a label takes a second line
-  /// rather than leaving the screen, and the pair wraps rather than scrolls.
-  Widget? _mapsStrip(AppLocalizations l10n) {
+  /// They are other maps, so they sit on the map rather than heading the list
+  /// (decisions § 2609), and in plain words: "Routes heatmap" and "Run
+  /// heatmap" were jargon by the owner's bar, and as two wide pills across
+  /// the map's foot they covered pins. Each keeps its label, because
+  /// icon-only actions proved undiscoverable for both maps (§ 1954), and the
+  /// stack at the map's end edge takes a fraction of the width (§ 2610).
+  List<Widget> _mapButtons(AppLocalizations l10n) {
     final api = widget.apiClient;
-    if (api == null) return null;
-    // The two heatmaps sit side by side, so both labels carry their
-    // qualifier ("Routes" = community discoverable-route + club pins;
-    // "Run" = the user's own tracks) — a bare "Heatmap" next to a sibling
-    // heatmap says nothing.
-    final links = [
-      ElevatedButton.icon(
+    if (api == null) return const [];
+    return [
+      MapControlButton(
         key: const ValueKey('routes-heatmap-link'),
-        icon: const Icon(Icons.local_fire_department),
-        label: Text(l10n.routesHeatmapTooltip),
+        icon: Icons.local_fire_department_outlined,
+        label: l10n.routesHeatmapTooltip,
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1304,10 +1306,10 @@ class RoutesScreenState extends State<RoutesScreen> {
           ),
         ),
       ),
-      ElevatedButton.icon(
+      MapControlButton(
         key: const ValueKey('run-heatmap-link'),
-        icon: const Icon(Icons.person_pin_circle_outlined),
-        label: Text(l10n.runHeatmapTooltip),
+        icon: Icons.person_pin_circle_outlined,
+        label: l10n.runHeatmapTitle,
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1319,19 +1321,6 @@ class RoutesScreenState extends State<RoutesScreen> {
         ),
       ),
     ];
-
-    // semantics-children: a group name, read once before the controls inside it
-    return Semantics(
-      container: true,
-      explicitChildNodes: true,
-      label: l10n.routesDiscover,
-      child: Wrap(
-        key: const ValueKey('routes-discover-strip'),
-        spacing: AppSpace.sm,
-        runSpacing: AppSpace.sm,
-        children: links,
-      ),
-    );
   }
 
   /// Import (when Build is the primary action) and the cloud sync, at the
