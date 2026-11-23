@@ -90,9 +90,9 @@ const double kRouteAvatarLeadingWidth = 56;
 /// The Routes tab: `Mine · Explore` (issue #1374, owner decision 1).
 ///
 /// Mine is the route library, imported and synced routes plus the ones the
-/// runner saved. Explore is public routes, headed by the discovery maps, and
-/// the segment catalogue, on its `Routes · Segments` chips; the catalogue was
-/// a Fitness tab of its own until then. Each view keeps its own controls and
+/// runner saved. Explore is public routes, with the discovery maps on its
+/// map, and the segment catalogue, on its `Routes · Segments` chips; the
+/// catalogue was a Fitness tab of its own until then. Each view keeps its own controls and
 /// state while another is showing, and only Mine has a primary action (Build,
 /// or Import with no api client).
 class RoutesScreen extends StatefulWidget {
@@ -762,7 +762,7 @@ class RoutesScreenState extends State<RoutesScreen> {
             routeStore: widget.routeStore,
             preferences: widget.preferences,
             chrome: chrome,
-            maps: _mapsStrip(Theme.of(context), l10n),
+            maps: _mapsStrip(l10n),
           )
         else
           const SizedBox.shrink(),
@@ -1272,29 +1272,31 @@ class RoutesScreenState extends State<RoutesScreen> {
             : null,
       );
 
-  /// The discovery maps heading Explore → Routes: the community routes
-  /// heatmap (discoverable-route, club and race pins) and the runner's own
-  /// run heatmap, as one row of equal labelled tiles, icon over label. Null
-  /// without an api client, which both maps read from.
+  /// The discovery maps on Explore → Routes: the community routes heatmap
+  /// (discoverable-route, club and race pins) and the runner's own run
+  /// heatmap, as two labelled buttons floating at the foot of Explore's map,
+  /// raised on the surface colour so they read over any tile without drawing
+  /// the eye the way a filled button would.
+  /// Null without an api client, which both maps read from.
   ///
-  /// One row at every width and text scale. As chips that wrapped, the tiles
-  /// stacked into full-width pills on a phone at a raised text scale and
-  /// pushed the list half a screen down; as a sideways scroll they gave no edge
-  /// cue and "Run heatmap" was never seen (decisions § 1954). A tile's label
-  /// takes a second line instead. Each stays labelled, because icon-only
-  /// actions proved undiscoverable for both heatmaps. Public routes was a
-  /// third tile while it was a pushed screen; it is Explore itself now.
-  Widget? _mapsStrip(ThemeData theme, AppLocalizations l10n) {
+  /// They are other maps, so they sit on the map rather than heading the list:
+  /// as two tall tiles at the top of the sheet they took the place of the
+  /// routes a runner came to see, and left one route on a phone (decisions
+  /// § 2609). Each keeps its label, because icon-only actions proved
+  /// undiscoverable for both heatmaps (§ 1954); a label takes a second line
+  /// rather than leaving the screen, and the pair wraps rather than scrolls.
+  Widget? _mapsStrip(AppLocalizations l10n) {
     final api = widget.apiClient;
     if (api == null) return null;
-    final tiles = <Widget>[
-      // The two heatmaps sit side by side, so both labels carry their
-      // qualifier ("Routes" = community discoverable-route + club pins;
-      // "Run" = the user's own tracks) — a bare "Heatmap" next to a
-      // sibling heatmap says nothing.
-      _DiscoverTile(
-        icon: Icons.local_fire_department,
-        label: l10n.routesHeatmapTooltip,
+    // The two heatmaps sit side by side, so both labels carry their
+    // qualifier ("Routes" = community discoverable-route + club pins;
+    // "Run" = the user's own tracks) — a bare "Heatmap" next to a sibling
+    // heatmap says nothing.
+    final links = [
+      ElevatedButton.icon(
+        key: const ValueKey('routes-heatmap-link'),
+        icon: const Icon(Icons.local_fire_department),
+        label: Text(l10n.routesHeatmapTooltip),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1302,9 +1304,10 @@ class RoutesScreenState extends State<RoutesScreen> {
           ),
         ),
       ),
-      _DiscoverTile(
-        icon: Icons.person_pin_circle_outlined,
-        label: l10n.runHeatmapTooltip,
+      ElevatedButton.icon(
+        key: const ValueKey('run-heatmap-link'),
+        icon: const Icon(Icons.person_pin_circle_outlined),
+        label: Text(l10n.runHeatmapTooltip),
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -1322,21 +1325,11 @@ class RoutesScreenState extends State<RoutesScreen> {
       container: true,
       explicitChildNodes: true,
       label: l10n.routesDiscover,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppInsets.gutter, AppSpace.xs, AppInsets.gutter, AppSpace.xs),
-        child: IntrinsicHeight(
-          child: Row(
-            key: const ValueKey('routes-discover-strip'),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < tiles.length; i++) ...[
-                if (i > 0) const SizedBox(width: AppSpace.sm),
-                Expanded(child: tiles[i]),
-              ],
-            ],
-          ),
-        ),
+      child: Wrap(
+        key: const ValueKey('routes-discover-strip'),
+        spacing: AppSpace.sm,
+        runSpacing: AppSpace.sm,
+        children: links,
       ),
     );
   }
@@ -1386,45 +1379,6 @@ class RoutesScreenState extends State<RoutesScreen> {
           icon: Icons.add_location_alt,
           onPressed: _fabBusy ? null : _openBuilder,
         );
-}
-
-/// One Discover entry: a labelled, outlined tile whose label may take a
-/// second line, so three fit one row on a narrow phone at a raised scale.
-class _DiscoverTile extends StatelessWidget {
-  const _DiscoverTile({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        minimumSize: const Size(0, kMinInteractiveDimension),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 double _shownM(cm.Route r) =>
