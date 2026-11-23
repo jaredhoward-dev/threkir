@@ -17,6 +17,8 @@ declare global {
 			back?: { target: import('#lib/util/back_target.ts').BackTarget; pop: boolean };
 			/// History entries the page pushed over its own (a park's opened preview); the back link steps over them.
 			stacked?: number;
+			/// The parks index's list view was opened from its map, so Map goes back rather than forward.
+			fromMap?: boolean;
 		}
 		// interface Platform {}
 	}

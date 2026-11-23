@@ -132,19 +132,24 @@ test.describe('park courses', () => {
 
 				await page.goto('/parks');
 				await expect(page.getByRole('heading', { level: 1, name: 'Park courses' })).toBeVisible();
+				// The intro is behind the title's How park courses work tip (decisions § 2612),
+				// which answers once the page has hydrated and loaded the parks.
+				await expect(page.getByTestId('park-card').filter({ hasText: planted.parkName })).toBeVisible();
+				await page.getByRole('button', { name: 'How park courses work' }).click();
 				await expect(page.getByText(/Run one whenever the park is open/)).toBeVisible();
 				// The index is reached from Races & courses (issue #1352) and
 				// carries a way back there, not a run-surface strip of its own.
 				await expect(page.locator('nav.surface-tabs')).toHaveCount(0);
 				await expect(page.getByTestId('parks-back-to-races')).toHaveAttribute('href', '/races');
-				await page.getByRole('link', { name: new RegExp(planted.parkName) }).click();
+				await page.getByTestId('park-card').filter({ hasText: planted.parkName }).click();
 				await page.waitForURL(`**/parks/us-va/${planted.parkSlug}`);
 				await expect(page.getByRole('heading', { level: 1, name: planted.parkName })).toBeVisible();
 				await expect(page.getByTestId('park-not-affiliated')).toContainText(
 					'not organised, sponsored or endorsed by the park',
 				);
 
-				await page.getByRole('link', { name: new RegExp(planted.courseName) }).click();
+				await page.getByTestId('park-course-card').filter({ hasText: planted.courseName }).locator('button.lc-tap').click();
+				await page.getByTestId('park-course-preview').getByRole('link', { name: 'Board' }).click();
 				await page.waitForURL(`**/parks/us-va/${planted.parkSlug}/lake-loop`);
 				await expect(page.getByRole('heading', { level: 1, name: planted.courseName })).toBeVisible();
 				await expect(page.getByTestId('park-course-safety')).toBeVisible();
