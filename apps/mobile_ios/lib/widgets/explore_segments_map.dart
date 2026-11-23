@@ -142,8 +142,9 @@ class _ExploreSegmentsMapState extends State<ExploreSegmentsMap> {
                 strokeWidth: p.id == selected ? 6 : 3,
                 color: p.id == selected
                     ? theme.colorScheme.tertiary
-                    : theme.colorScheme.primary
-                        .withValues(alpha: dim ? 0.35 : 0.85),
+                    : dim
+                        ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                        : theme.colorScheme.primary,
               ),
         ]),
         Builder(builder: (context) {

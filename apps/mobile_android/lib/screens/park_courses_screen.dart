@@ -743,42 +743,41 @@ class _AboutPark extends StatelessWidget {
     final park = listing.park;
     final description = park.description?.trim();
     final website = park.websiteUrl;
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        key: const Key('park-about'),
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        expandedCrossAxisAlignment: CrossAxisAlignment.start,
-        leading: const Icon(Icons.info_outline),
-        title: Text(l10n.parksAboutPark),
-        children: [
-          if (description != null && description.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(description, key: const Key('park-description')),
-            ),
-          if (website != null && website.startsWith('https://'))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TextButton.icon(
-                key: const Key('park-website'),
-                onPressed: () => _openParkWebsite(context, website),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: Text(l10n.parksWebsite),
-              ),
-            ),
-          _ParkFootNote(
-            key: const Key('park-not-affiliated'),
-            text: l10n.parksNotAffiliated,
+    return ExpansionTile(
+      key: const Key('park-about'),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+      leading: const Icon(Icons.info_outline),
+      title: Text(l10n.parksAboutPark),
+      children: [
+        if (description != null && description.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(description, key: const Key('park-description')),
           ),
-          const SizedBox(height: 4),
-          _ParkFootNote(
-            key: const Key('park-group-permit'),
-            text: l10n.parksGroupPermitNotice,
+        if (website != null && website.startsWith('https://'))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextButton.icon(
+              key: const Key('park-website'),
+              onPressed: () => _openParkWebsite(context, website),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: Text(l10n.parksWebsite),
+            ),
           ),
-        ],
-      ),
+        _ParkFootNote(
+          key: const Key('park-not-affiliated'),
+          text: l10n.parksNotAffiliated,
+        ),
+        const SizedBox(height: 4),
+        _ParkFootNote(
+          key: const Key('park-group-permit'),
+          text: l10n.parksGroupPermitNotice,
+        ),
+      ],
     );
   }
 }
