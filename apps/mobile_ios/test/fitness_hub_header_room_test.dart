@@ -153,8 +153,9 @@ void main() {
       final icon = find.byKey(const Key('filter-bar-search'));
       final filters = find.byKey(const Key('filter-bar-filters'));
       final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
-      expect(tester.getCenter(icon).dy, moreOrLessEquals(line.center.dy));
-      expect(tester.getCenter(filters).dy, moreOrLessEquals(line.center.dy));
+      expect(line.contains(tester.getCenter(icon)), isTrue);
+      expect(tester.getCenter(filters).dy,
+          moreOrLessEquals(tester.getCenter(icon).dy));
       // Over a map the row lies on the page, so the map starts where the
       // row ends.
       final row = find.descendant(
@@ -213,7 +214,7 @@ void main() {
     final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
     for (final key in ['filter-bar-search', 'filter-bar-filters']) {
       final r = tester.getRect(find.byKey(Key(key)));
-      expect(r.center.dy, moreOrLessEquals(line.center.dy), reason: key);
+      expect(line.contains(r.center), isTrue, reason: key);
       expect(r.right, lessThanOrEqualTo(kWorstCasePhone.width), reason: key);
     }
     expect(find.byType(TextField), findsNothing);

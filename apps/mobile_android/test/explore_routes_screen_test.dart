@@ -1086,8 +1086,18 @@ void _critiqueTests() {
           for (final chip in find.byType(ChoiceChip).evaluate()) {
             final r = tester.getRect(find.byWidget(chip.widget));
             expect(r.left, greaterThanOrEqualTo(0));
-            expect(r.right, lessThanOrEqualTo(icon.left + 0.5),
+            expect(r.right, lessThanOrEqualTo(size.width));
+            expect(r.overlaps(icon.expandToInclude(f)), isFalse,
                 reason: 'no chip is pushed off screen or under the icons');
+          }
+          for (final label in ['Routes', 'Segments']) {
+            final text = find.descendant(
+                of: find.byType(ChoiceChip), matching: find.byType(Text));
+            for (final t in text.evaluate()) {
+              final p = tester.renderObject<RenderParagraph>(
+                  find.byWidget(t.widget));
+              expect(p.didExceedMaxLines, isFalse, reason: '$label is whole');
+            }
           }
           expect(find.byIcon(Icons.timeline), findsOneWidget,
               reason: 'Segments leads with its own glyph, not a blank');
