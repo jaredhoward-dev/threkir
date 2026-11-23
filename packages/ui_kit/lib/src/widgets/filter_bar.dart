@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../theme/spacing.dart';
 import 'edge_fade_scroll.dart';
@@ -368,36 +369,19 @@ class FilterBar extends StatelessWidget {
   Widget _collapsible(BuildContext context, AppSearchField field) {
     final start = padding.left;
     final end = padding.right;
-    // The chips wrap here rather than scroll: under a map they are the few
-    // that switch what the map shows (Routes · Segments), and at 2x on a
-    // 320 dp phone a scrolling line beside the two icons hid all but one of
-    // them (decisions § 2610). One row whenever they fit, which on a phone
-    // at 1.0x they do.
-    final line = Padding(
-      padding: EdgeInsetsDirectional.only(start: start),
-      child: Wrap(
-        key: const Key('filter-bar-chips'),
-        spacing: AppSpace.sm,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          ...chips,
-          for (final f in activeFilters)
-            InputChip(
-              label: Text(f.label),
-              selected: true,
-              showCheckmark: false,
-              onPressed: onOpenFilters,
-              onDeleted: f.onRemove,
-              deleteButtonTooltipMessage: f.removeTooltip,
-              materialTapTargetSize: MaterialTapTargetSize.padded,
-            ),
-        ],
-      ),
-    );
-    final Widget labelledLine = chipsLabel == null
-        ? line
-        // semantics-children: a group name, read once before the controls inside it
-        : Semantics(container: true, label: chipsLabel, child: line);
+    final lineChips = [
+      ...chips,
+      for (final f in activeFilters)
+        InputChip(
+          label: Text(f.label),
+          selected: true,
+          showCheckmark: false,
+          onPressed: onOpenFilters,
+          onDeleted: f.onRemove,
+          deleteButtonTooltipMessage: f.removeTooltip,
+          materialTapTargetSize: MaterialTapTargetSize.padded,
+        ),
+    ];
     return Padding(
       padding: EdgeInsets.only(top: padding.top, bottom: padding.bottom),
       child: Column(
@@ -414,7 +398,8 @@ class FilterBar extends StatelessWidget {
           _FoldedSearchRow(
             field: field,
             applied: searchApplied,
-            line: labelledLine,
+            chips: lineChips,
+            chipsLabel: chipsLabel,
             pinned: [
               if (onOpenFilters != null) _filtersButton(),
               ...trailing,
@@ -568,7 +553,8 @@ class _FoldedSearchRow extends StatefulWidget {
   const _FoldedSearchRow({
     required this.field,
     required this.applied,
-    required this.line,
+    required this.chips,
+    required this.chipsLabel,
     required this.pinned,
     required this.start,
     required this.end,
@@ -578,7 +564,12 @@ class _FoldedSearchRow extends StatefulWidget {
 
   /// [FilterBar.searchApplied].
   final bool? applied;
-  final Widget line;
+  /// The line's chips, which wrap rather than scroll here: under a map they
+  /// are the few that switch what the map shows (Routes · Segments), and at
+  /// 2x on a 320 dp phone a scrolling line beside the icons hid all but one
+  /// (decisions § 2610).
+  final List<Widget> chips;
+  final String? chipsLabel;
 
   /// Filters and the host's actions, at the end of the line's row.
   final List<Widget> pinned;
@@ -693,23 +684,32 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncBack());
     final shown = _shown;
+    final icons = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!shown)
+          IconButton(
+            key: const Key('filter-bar-search'),
+            focusNode: _iconFocus,
+            tooltip: widget.field.hint,
+            icon: const Icon(Icons.search),
+            onPressed: _openField,
+          ),
+        ...widget.pinned,
+      ],
+    );
+    final Widget line = _ChipsThenEnd(
+      key: const Key('filter-bar-chips'),
+      spacing: AppSpace.sm,
+      children: [...widget.chips, icons],
+    );
     final lineRow = Padding(
       key: const ValueKey('folded-search-line'),
-      padding: EdgeInsetsDirectional.only(end: widget.end),
-      child: Row(
-        children: [
-          Expanded(child: widget.line),
-          if (!shown)
-            IconButton(
-              key: const Key('filter-bar-search'),
-              focusNode: _iconFocus,
-              tooltip: widget.field.hint,
-              icon: const Icon(Icons.search),
-              onPressed: _openField,
-            ),
-          ...widget.pinned,
-        ],
-      ),
+      padding: EdgeInsetsDirectional.only(start: widget.start, end: widget.end),
+      child: widget.chipsLabel == null
+          ? line
+          // semantics-children: a group name, read once before the controls inside it
+          : Semantics(container: true, label: widget.chipsLabel, child: line),
     );
     // One shape in every state, the field first, so the field keeps its
     // place (and its focus and keyboard) when a search lands and the chips
@@ -743,6 +743,138 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
       child: body,
     );
   }
+}
+
+/// Chips that wrap, then one widget held at the end of the last line (the
+/// folded bar's icons): on the chips' last line when it fits there, else on
+/// a line of its own, at the end either way. So at 1.0x the chips lead and
+/// the icons stand at the row's end, and at 2x every chip is whole and the
+/// icons never take one's place.
+class _ChipsThenEnd extends MultiChildRenderObjectWidget {
+  const _ChipsThenEnd({
+    super.key,
+    required this.spacing,
+    required super.children,
+  });
+
+  final double spacing;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderChipsThenEnd(
+        spacing: spacing,
+        textDirection: Directionality.of(context),
+      );
+
+  @override
+  void updateRenderObject(
+      BuildContext context, _RenderChipsThenEnd renderObject) {
+    renderObject
+      ..spacing = spacing
+      ..textDirection = Directionality.of(context);
+  }
+}
+
+class _ChipsThenEndParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderChipsThenEnd extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _ChipsThenEndParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _ChipsThenEndParentData> {
+  _RenderChipsThenEnd({
+    required double spacing,
+    required TextDirection textDirection,
+  })  : _spacing = spacing,
+        _textDirection = textDirection;
+
+  double _spacing;
+  set spacing(double value) {
+    if (value == _spacing) return;
+    _spacing = value;
+    markNeedsLayout();
+  }
+
+  TextDirection _textDirection;
+  set textDirection(TextDirection value) {
+    if (value == _textDirection) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _ChipsThenEndParentData) {
+      child.parentData = _ChipsThenEndParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    final loose = BoxConstraints(maxWidth: width);
+    final children = getChildrenAsList();
+    for (final c in children) {
+      c.layout(loose, parentUsesSize: true);
+    }
+    final end = children.isEmpty ? null : children.last;
+    final chips =
+        children.isEmpty ? <RenderBox>[] : children.sublist(0, children.length - 1);
+    // Lines of chips: (first index, last index exclusive, height).
+    final lines = <List<RenderBox>>[];
+    var current = <RenderBox>[];
+    var x = 0.0;
+    for (final c in chips) {
+      final w = c.size.width;
+      if (current.isNotEmpty && x + _spacing + w > width) {
+        lines.add(current);
+        current = [];
+        x = 0;
+      }
+      x = current.isEmpty ? w : x + _spacing + w;
+      current.add(c);
+    }
+    if (current.isNotEmpty) lines.add(current);
+    final endWidth = end?.size.width ?? 0;
+    final lastWidth = lines.isEmpty
+        ? 0.0
+        : lines.last.fold<double>(0, (a, c) => a + c.size.width) +
+            _spacing * (lines.last.length - 1);
+    final endOnLast =
+        lines.isNotEmpty && lastWidth + _spacing + endWidth <= width;
+    final rtl = _textDirection == TextDirection.rtl;
+    var y = 0.0;
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final carriesEnd = endOnLast && i == lines.length - 1;
+      var h = line.fold<double>(0, (a, c) => a > c.size.height ? a : c.size.height);
+      if (carriesEnd && end!.size.height > h) h = end.size.height;
+      var cx = 0.0;
+      for (final c in line) {
+        final dx = rtl ? width - cx - c.size.width : cx;
+        (c.parentData! as _ChipsThenEndParentData).offset =
+            Offset(dx, y + (h - c.size.height) / 2);
+        cx += c.size.width + _spacing;
+      }
+      if (carriesEnd) {
+        (end!.parentData! as _ChipsThenEndParentData).offset = Offset(
+            rtl ? 0 : width - end.size.width, y + (h - end.size.height) / 2);
+      }
+      y += h;
+    }
+    if (end != null && !endOnLast) {
+      (end.parentData! as _ChipsThenEndParentData).offset =
+          Offset(rtl ? 0 : width - end.size.width, y);
+      y += end.size.height;
+    }
+    size = constraints.constrain(Size(width, y));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }
 
 /// Where [FilterBar] puts a single quick chip.

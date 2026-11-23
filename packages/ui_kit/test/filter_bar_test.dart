@@ -284,7 +284,8 @@ void main() {
             clearTooltip: 'Clear search',
             onChanged: seen?.add,
           ),
-          chips: _bands('All', (_) {}).take(3).toList(),
+          // Two, as under a map (Routes · Segments).
+          chips: _bands('All', (_) {}).take(2).toList(),
           filtersLabel: 'Filters',
           onOpenFilters: () {},
         );
@@ -302,22 +303,29 @@ void main() {
         expect(icon, findsOneWidget);
         expect(find.byTooltip('Search routes by name…'), findsOneWidget,
             reason: 'the icon is named by the field\'s hint');
-        final chips = tester.getRect(find.byKey(const Key('filter-bar-chips')));
         final i = tester.getRect(icon);
         final f = tester.getRect(filters);
-        expect(i.center.dy, moreOrLessEquals(chips.center.dy));
-        expect(f.center.dy, moreOrLessEquals(chips.center.dy));
-        expect(i.left, greaterThanOrEqualTo(chips.right - 0.5));
+        expect(f.center.dy, moreOrLessEquals(i.center.dy));
         expect(f.left, greaterThanOrEqualTo(i.right - 0.5),
             reason: 'search, then Filters');
-        expect(f.right, lessThanOrEqualTo(width - AppInsets.gutter + 0.5));
+        expect(f.right, moreOrLessEquals(width - AppInsets.gutter),
+            reason: 'the icons stand at the row\'s end');
         expect(i.width, greaterThanOrEqualTo(48));
         expect(i.height, greaterThanOrEqualTo(48));
-        // Nothing is pushed off screen or under the icons: the chips wrap.
-        for (final chip in find.byType(ChoiceChip).evaluate()) {
-          final r = tester.getRect(find.byWidget(chip.widget));
-          expect(r.left, greaterThanOrEqualTo(0));
-          expect(r.right, lessThanOrEqualTo(i.left + 0.5));
+        // Every chip is whole on screen and none is under the icons: the
+        // chips wrap, and the icons take the last line's end or their own.
+        final chipRects = [
+          for (final chip in find.byType(ChoiceChip).evaluate())
+            tester.getRect(find.byWidget(chip.widget)),
+        ];
+        for (final r in chipRects) {
+          expect(r.left, greaterThanOrEqualTo(AppInsets.gutter - 0.5));
+          expect(r.right, lessThanOrEqualTo(width - AppInsets.gutter + 0.5));
+          expect(r.overlaps(i.expandToInclude(f)), isFalse);
+        }
+        if (scale == 1.0) {
+          expect(i.center.dy, moreOrLessEquals(chipRects.first.center.dy),
+              reason: 'at 1.0x the chips and the icons share one row');
         }
       });
     }
