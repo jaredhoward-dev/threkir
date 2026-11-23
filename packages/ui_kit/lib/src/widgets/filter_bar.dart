@@ -745,9 +745,9 @@ class _FoldedSearchRowState extends State<_FoldedSearchRow> {
   }
 }
 
-/// Chips that wrap, then one widget held at the end of the last line (the
-/// folded bar's icons): on the chips' last line when it fits there, else on
-/// a line of its own, at the end either way. So at 1.0x the chips lead and
+/// Chips that wrap, then one widget held at the end of a line (the folded
+/// bar's icons): the last line with room for it, else a line of its own, at
+/// the end either way. So at 1.0x the chips lead and
 /// the icons stand at the row's end, and at 2x every chip is whole and the
 /// icons never take one's place.
 class _ChipsThenEnd extends MultiChildRenderObjectWidget {
@@ -834,17 +834,24 @@ class _RenderChipsThenEnd extends RenderBox
     }
     if (current.isNotEmpty) lines.add(current);
     final endWidth = end?.size.width ?? 0;
-    final lastWidth = lines.isEmpty
-        ? 0.0
-        : lines.last.fold<double>(0, (a, c) => a + c.size.width) +
-            _spacing * (lines.last.length - 1);
-    final endOnLast =
-        lines.isNotEmpty && lastWidth + _spacing + endWidth <= width;
+    double lineWidth(List<RenderBox> line) =>
+        line.fold<double>(0, (a, c) => a + c.size.width) +
+        _spacing * (line.length - 1);
+    // The last line with room for the end, so at 2x the icons can stand at
+    // the end of the first line rather than take a line of their own.
+    var endLine = -1;
+    for (var i = lines.length - 1; i >= 0; i--) {
+      if (lineWidth(lines[i]) + _spacing + endWidth <= width) {
+        endLine = i;
+        break;
+      }
+    }
+    final endOnLast = endLine >= 0;
     final rtl = _textDirection == TextDirection.rtl;
     var y = 0.0;
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final carriesEnd = endOnLast && i == lines.length - 1;
+      final carriesEnd = i == endLine;
       var h = line.fold<double>(0, (a, c) => a > c.size.height ? a : c.size.height);
       if (carriesEnd && end!.size.height > h) h = end.size.height;
       var cx = 0.0;
