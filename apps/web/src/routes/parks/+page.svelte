@@ -335,7 +335,10 @@
 		inset-inline: var(--space-md);
 		width: fit-content;
 		margin-inline: auto;
-		z-index: 1;
+		/* Over MapLibre's control corners (z-index 2): a narrow map opens its
+		   attribution expanded across the bottom edge, which took the tap. The
+		   Explore map's list pill sits at the same height (ExploreShell). */
+		z-index: 5;
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-xs);
