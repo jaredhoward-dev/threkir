@@ -1,12 +1,11 @@
 <script lang="ts">
-	// Every course line of one park on one map (issue #1352), with each
+	// Every course line of one park on one map (issue #1352), each in its own
+	// colour (the card's strip repeats it, decisions § 2612), with each
 	// distinct start area marked. Pointing at a course in the list beside it
-	// (`highlightId`) or previewing one (`selectedId`) draws its line wider,
-	// in the pinned-line violet on a halo, over the others faded; a previewed
-	// course is also framed and its start and finish are pinned. Violet, not
-	// the accent amber: amber read 1.29:1 against the coral course line
-	// (1.15:1 dark) and looked like it, where violet over the faded lines reads
-	// 3.92:1 light and 3.63:1 dark (decisions § 2588).
+	// (`highlightId`) or previewing one (`selectedId`) draws its line wider on
+	// a halo over the others faded; a previewed course is also framed, and its
+	// start is pinned with a "Start here" label and its finish with a pin.
+	// Tapping a line previews its course (`onselect`).
 	//
 	// The camera frames the lines whenever the map's box changes size, until
 	// the reader moves the map themselves: a fit taken against a box that was
@@ -22,9 +21,7 @@
 		mapFinishColour,
 		mapLabelHalo,
 		mapOverlayOutline,
-		mapPinnedLine,
 		mapStartColour,
-		mapTrackLine,
 	} from '#lib/routes/basemap_contrast.ts';
 	import { watchMapResize } from '#lib/routes/map_resize.ts';
 	import { hasAcceptedConsent } from '#lib/settings/consent.svelte.ts';
@@ -34,7 +31,9 @@
 	const PUBLIC_MAPTILER_KEY = PUBLIC_MAPTILER_KEY_ENV ?? '';
 
 	interface Props {
-		courses: { id: string; points: LatLng[] }[];
+		courses: { id: string; points: LatLng[]; colour: string }[];
+		/** A tap on a course line. */
+		onselect?: (id: string) => void;
 		highlightId?: string | null;
 		/** The previewed course: framed, drawn over faded others, its ends pinned. */
 		selectedId?: string | null;
@@ -57,6 +56,7 @@
 		twoFingerHint,
 		consented = $bindable(untrack(() => hasAcceptedConsent())),
 		testid,
+		onselect,
 	}: Props = $props();
 
 	const prefersDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -72,14 +72,14 @@
 	const reducedMotion =
 		typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-	function linesData(): GeoJSON.FeatureCollection<GeoJSON.LineString, { id: string }> {
+	function linesData(): GeoJSON.FeatureCollection<GeoJSON.LineString, { id: string; colour: string }> {
 		return {
 			type: 'FeatureCollection',
 			features: courses
 				.filter((c) => c.points.length >= 2)
 				.map((c) => ({
 					type: 'Feature',
-					properties: { id: c.id },
+					properties: { id: c.id, colour: c.colour },
 					geometry: { type: 'LineString', coordinates: c.points.map((p) => [p.lng, p.lat]) },
 				})),
 		};
@@ -101,7 +101,7 @@
 		const id = selectedId ?? highlightId ?? '';
 		map.setFilter('park-course-highlight', ['==', ['get', 'id'], id]);
 		map.setFilter('park-course-highlight-casing', ['==', ['get', 'id'], id]);
-		map.setPaintProperty('park-course-lines', 'line-opacity', selectedId ? 0.3 : highlightId ? 0.45 : 0.9);
+		map.setPaintProperty('park-course-lines', 'line-opacity', selectedId ? 0.3 : highlightId ? 0.45 : 1);
 		map.setPaintProperty('park-course-casing', 'line-opacity', selectedId ? 0.15 : 0.35);
 		map.setLayoutProperty('park-course-starts', 'visibility', selectedId ? 'none' : 'visible');
 	}
@@ -112,11 +112,25 @@
 		if (!map || !ready || !selectedId || !selectedEnds) return;
 		const { start, finish } = selectedEnds;
 		if (finish) {
-			endMarkers.push(new maplibregl.Marker({ color: mapStartColour(darkBasemap) }).setLngLat([start.lng, start.lat]).addTo(map));
 			endMarkers.push(new maplibregl.Marker({ color: mapFinishColour(darkBasemap) }).setLngLat([finish.lng, finish.lat]).addTo(map));
-		} else {
-			endMarkers.push(new maplibregl.Marker({ color: mapFinishColour(darkBasemap) }).setLngLat([start.lng, start.lat]).addTo(map));
 		}
+		endMarkers.push(
+			new maplibregl.Marker({ element: startLabel(finish ? mapStartColour(darkBasemap) : mapFinishColour(darkBasemap)), anchor: 'bottom' })
+				.setLngLat([start.lng, start.lat])
+				.addTo(map),
+		);
+	}
+
+	function startLabel(colour: string): HTMLElement {
+		const el = document.createElement('span');
+		el.className = 'park-start-here';
+		el.dataset.testid = 'park-map-start-here';
+		const dot = document.createElement('span');
+		dot.className = 'park-start-here-dot';
+		dot.style.background = colour;
+		dot.setAttribute('aria-hidden', 'true');
+		el.append(dot, document.createTextNode(m('parks.startHere')));
+		return el;
 	}
 
 	function draw() {
@@ -141,7 +155,7 @@
 				type: 'line',
 				source: 'park-courses',
 				layout: { 'line-cap': 'round', 'line-join': 'round' },
-				paint: { 'line-color': mapTrackLine(darkBasemap), 'line-width': 3.5, 'line-opacity': 0.9 },
+				paint: { 'line-color': ['get', 'colour'], 'line-width': 4, 'line-opacity': 1 },
 			});
 			map.addLayer({
 				id: 'park-course-highlight-casing',
@@ -157,7 +171,24 @@
 				source: 'park-courses',
 				filter: ['==', ['get', 'id'], ''],
 				layout: { 'line-cap': 'round', 'line-join': 'round' },
-				paint: { 'line-color': mapPinnedLine(darkBasemap), 'line-width': 6 },
+				paint: { 'line-color': ['get', 'colour'], 'line-width': 7 },
+			});
+			map.addLayer({
+				id: 'park-course-hit',
+				type: 'line',
+				source: 'park-courses',
+				layout: { 'line-cap': 'round', 'line-join': 'round' },
+				paint: { 'line-color': mapOverlayOutline(darkBasemap), 'line-width': 22, 'line-opacity': 0 },
+			});
+			map.on('click', 'park-course-hit', (e) => {
+				const id = e.features?.[0]?.properties?.id;
+				if (typeof id === 'string') onselect?.(id);
+			});
+			map.on('mouseenter', 'park-course-hit', () => {
+				if (map && onselect) map.getCanvas().style.cursor = 'pointer';
+			});
+			map.on('mouseleave', 'park-course-hit', () => {
+				if (map) map.getCanvas().style.cursor = '';
 			});
 			map.addLayer({
 				id: 'park-course-starts',
@@ -290,5 +321,27 @@
 	}
 	.park-courses-consent p {
 		margin: 0;
+	}
+	:global(.park-start-here) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.2rem 0.55rem 0.2rem 0.3rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: var(--color-surface);
+		box-shadow: var(--shadow-md);
+		color: var(--color-text);
+		font-size: 0.8rem;
+		font-weight: 700;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	:global(.park-start-here-dot) {
+		width: 0.85rem;
+		height: 0.85rem;
+		border-radius: 50%;
+		border: 2px solid var(--color-surface);
+		box-shadow: 0 0 0 1px var(--color-border);
 	}
 </style>

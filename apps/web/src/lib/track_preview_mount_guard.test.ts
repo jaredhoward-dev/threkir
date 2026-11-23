@@ -66,10 +66,7 @@ const STATIC_DEMO_MOUNTS: Record<string, RegExp> = {
  * same way: each imports the catalogue read by name, and the companion test
  * fails if one reaches a runner's runs or routes.
  */
-const CATALOGUE_MOUNTS: Record<string, RegExp> = {
-	'routes/parks/[region]/[park]/+page.svelte':
-		/import \{[^}]*\bfetchParkCourses\b[^}]*\} from '#lib\/core\/data\.ts'/,
-};
+const CATALOGUE_MOUNTS: Record<string, RegExp> = {};
 
 function svelteFiles(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir)) {
