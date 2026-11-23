@@ -273,6 +273,111 @@ void main() {
     });
   });
 
+  // decisions § 2610 (owner choice, 2026-11-22): under a map the search is
+  // an icon at the end of the chip line, so the bar is one row.
+  group('a collapsible search', () {
+    Widget bar(TextEditingController ctl, {List<String>? seen}) => FilterBar(
+          collapsibleSearch: true,
+          search: AppSearchField(
+            controller: ctl,
+            hint: 'Search routes by name…',
+            clearTooltip: 'Clear search',
+            onChanged: seen?.add,
+          ),
+          chips: _bands('All', (_) {}).take(3).toList(),
+          filtersLabel: 'Filters',
+          onOpenFilters: () {},
+        );
+    final icon = find.byKey(const Key('filter-bar-search'));
+    final filters = find.byKey(const Key('filter-bar-filters'));
+
+    for (final (width, scale) in [(412.0, 1.0), (320.0, 2.0)]) {
+      testWidgets('folds into an icon beside Filters at the end of the chip '
+          'line, one row, at $width dp and ${scale}x', (tester) async {
+        final ctl = TextEditingController();
+        addTearDown(ctl.dispose);
+        await _pump(tester, bar(ctl), width: width, textScale: scale);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(TextField), findsNothing);
+        expect(icon, findsOneWidget);
+        expect(find.byTooltip('Search routes by name…'), findsOneWidget,
+            reason: 'the icon is named by the field\'s hint');
+        final chips = tester.getRect(find.byKey(const Key('filter-bar-chips')));
+        final i = tester.getRect(icon);
+        final f = tester.getRect(filters);
+        expect(i.center.dy, moreOrLessEquals(chips.center.dy));
+        expect(f.center.dy, moreOrLessEquals(chips.center.dy));
+        expect(i.left, greaterThanOrEqualTo(chips.right - 0.5));
+        expect(f.left, greaterThanOrEqualTo(i.right - 0.5),
+            reason: 'search, then Filters');
+        expect(f.right, lessThanOrEqualTo(width - AppInsets.gutter + 0.5));
+        expect(i.width, greaterThanOrEqualTo(48));
+        expect(i.height, greaterThanOrEqualTo(48));
+      });
+    }
+
+    testWidgets('the icon opens the field in the line\'s place, focused, and '
+        'its clear empties it and closes back to the icon', (tester) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      final seen = <String>[];
+      await _pump(tester, bar(ctl, seen: seen));
+      final lineTop = tester.getRect(find.byKey(const Key('filter-bar-chips'))).top;
+      await tester.tap(icon);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byKey(const Key('filter-bar-chips')), findsNothing);
+      expect(tester.getRect(find.byType(TextField)).top,
+          moreOrLessEquals(lineTop, epsilon: 4),
+          reason: 'in the line\'s place, not a row of its own');
+      expect(
+          tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+          isTrue,
+          reason: 'focused, so the keyboard comes up');
+      expect(filters, findsOneWidget, reason: 'Filters stays in reach');
+
+      await tester.enterText(find.byType(TextField), 'hill');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Clear search'));
+      await tester.pump();
+      await tester.pump();
+      expect(ctl.text, isEmpty);
+      expect(seen.last, '');
+      expect(find.byType(TextField), findsNothing);
+      expect(icon, findsOneWidget);
+      expect(Focus.of(tester.element(find.byIcon(Icons.search))).hasFocus,
+          isTrue,
+          reason: 'focus goes back to the icon it came from');
+    });
+
+    testWidgets('an open field with no query closes from its clear button',
+        (tester) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      await _pump(tester, bar(ctl));
+      await tester.tap(icon);
+      await tester.pump();
+      expect(find.byTooltip('Clear search'), findsOneWidget,
+          reason: 'the way back shows before anything is typed');
+      await tester.tap(find.byTooltip('Clear search'));
+      await tester.pump();
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('a live query keeps the field open', (tester) async {
+      final ctl = TextEditingController(text: 'hill');
+      addTearDown(ctl.dispose);
+      await _pump(tester, bar(ctl));
+      expect(find.byType(TextField), findsOneWidget);
+      expect(icon, findsNothing);
+      expect(
+          tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+          isFalse,
+          reason: 'shown, but the keyboard does not pop up on its own');
+    });
+  });
+
   testWidgets('the filter sheet\'s Done closes it and Reset resets',
       (tester) async {
     var reset = 0;

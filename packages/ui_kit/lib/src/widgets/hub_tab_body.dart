@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show clampDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
@@ -404,9 +405,42 @@ class HubTabBody extends StatefulWidget {
 
   @override
   State<HubTabBody> createState() => _HubTabBodyState();
+
+  /// The hosting body's control row, for a control that must keep it on
+  /// screen (a search field with a live query), or null outside a hub tab.
+  static HubControlsHold? controlsOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<_HubControlsScope>()
+      ?.state
+      ._holdHandle;
 }
 
-class _HubTabBodyState extends State<HubTabBody> {
+/// Keeps a hub tab's control row on screen while a control asks
+/// ([HubTabBody.controlsOf]). Changes apply after the frame, so a control
+/// may ask from `initState` and let go from `dispose`.
+class HubControlsHold {
+  HubControlsHold._(this._state);
+
+  final _HubTabBodyState _state;
+
+  /// Holds the row for [owner] while [hold] is true.
+  void hold(Object owner, bool hold) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) _state._hold(owner, hold);
+    });
+  }
+}
+
+class _HubControlsScope extends InheritedWidget {
+  const _HubControlsScope({required this.state, required super.child});
+
+  final _HubTabBodyState state;
+
+  @override
+  bool updateShouldNotify(_HubControlsScope oldWidget) => false;
+}
+
+class _HubTabBodyState extends State<HubTabBody>
+    with SingleTickerProviderStateMixin {
   HubTabScope? _scope;
 
   /// What this body last handed the hub, so a withdrawal never removes an
@@ -416,8 +450,30 @@ class _HubTabBodyState extends State<HubTabBody> {
   /// The menu this body last handed the hub, for the same reason.
   List<HubMenuItem>? _publishedMenu;
 
-  /// Hosted, whether the control row has slid away under the hub's strip.
-  bool _controlsHidden = false;
+  /// Hosted, how much of the control row has slid away under the hub's
+  /// strip: 0 shown, 1 gone. It follows the content's scroll, a pixel of
+  /// scroll for a pixel of row, and settles at either end.
+  double _hidden = 0;
+
+  /// Settles [_hidden] at an end once a scroll stops part way.
+  late final AnimationController _settle;
+
+  @override
+  void initState() {
+    super.initState();
+    _settle = AnimationController(vsync: this)
+      ..addListener(() => _setHidden(_settle.value));
+  }
+
+  /// Controls in the row asking it to stay (a search with a live query).
+  final Set<Object> _holds = {};
+
+  /// Whether the scroll under way began with a finger (and runs on through
+  /// its fling). A scroll the app makes (a jump to the end, a scroll to a
+  /// result) leaves the row where it is.
+  bool _userScroll = false;
+
+  late final _holdHandle = HubControlsHold._(this);
 
   /// Whether a control in the row has focus, which keeps the row showing.
   bool _controlsFocused = false;
@@ -451,7 +507,10 @@ class _HubTabBodyState extends State<HubTabBody> {
     super.didUpdateWidget(oldWidget);
     // The selection bar stands in the row's place; once it closes the row
     // comes back where it was left, on screen.
-    if (widget.selection != null) _controlsHidden = false;
+    if (widget.selection != null) {
+      _settle.stop();
+      _hidden = 0;
+    }
     if (_scope case final scope?) _registerBack(scope);
     _publish();
     _publishCompactTitle();
@@ -459,6 +518,7 @@ class _HubTabBodyState extends State<HubTabBody> {
 
   @override
   void dispose() {
+    _settle.dispose();
     if (_scope case final scope?) {
       _withdraw(scope);
       scope.actions.registerBack(scope.tab, this, null);
@@ -613,14 +673,17 @@ class _HubTabBodyState extends State<HubTabBody> {
       onNotification: _onSheet,
       child: NotificationListener<ScrollMetricsNotification>(
         onNotification: _onMetrics,
-        child: NotificationListener<UserScrollNotification>(
-          onNotification: _onUserScroll,
-          child: RefreshIndicator(
-            onRefresh: onRefresh ?? () async {},
-            notificationPredicate: onRefresh == null
-                ? (_) => false
-                : defaultScrollNotificationPredicate,
-            child: widget.body,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
+          child: NotificationListener<UserScrollNotification>(
+            onNotification: _onUserScroll,
+            child: RefreshIndicator(
+              onRefresh: onRefresh ?? () async {},
+              notificationPredicate: onRefresh == null
+                  ? (_) => false
+                  : defaultScrollNotificationPredicate,
+              child: widget.body,
+            ),
           ),
         ),
       ),
@@ -629,35 +692,83 @@ class _HubTabBodyState extends State<HubTabBody> {
 
   /// Hosted, tells the hub which way the list is moving, so its FAB shows
   /// its icon only while the list scrolls down
-  /// ([HubPrimaryActions.setCollapsed]), and slides the control row away
-  /// while it does.
+  /// ([HubPrimaryActions.setCollapsed]).
   bool _onUserScroll(UserScrollNotification n) {
     final scope = _scope;
     if (scope == null || n.metrics.axis != Axis.vertical) return false;
     switch (n.direction) {
       case ScrollDirection.reverse:
         scope.actions.setCollapsed(scope.tab, true);
-        if (_mayHideControls(n.metrics)) _setControlsHidden(true);
       case ScrollDirection.forward:
         scope.actions.setCollapsed(scope.tab, false);
-        _setControlsHidden(false);
       case ScrollDirection.idle:
         if (n.metrics.atEdge) scope.actions.setCollapsed(scope.tab, false);
-        if (n.metrics.pixels <= n.metrics.minScrollExtent) {
-          _setControlsHidden(false);
-        }
     }
     return false;
   }
 
-  /// The row only goes when the content would still scroll without it: a
-  /// list that fits once the row has gone could never be scrolled up again
-  /// to bring it back.
-  bool _mayHideControls(ScrollMetrics metrics) {
-    if (_controlsFocused || widget.selection != null) return false;
-    final height = _controlsKey.currentContext?.size?.height ?? 0;
+  double get _rowHeight => _controlsKey.currentContext?.size?.height ?? 0;
+
+  /// Whether the row may go: never while a control in it has focus or holds
+  /// it (a live query), while rows are selected, or over content that would
+  /// not scroll without it, since a list that fits once the row has gone
+  /// could never be scrolled back to fetch it.
+  bool _mayHide(ScrollMetrics metrics) {
+    if (_controlsFocused || _holds.isNotEmpty || widget.selection != null) {
+      return false;
+    }
+    final height = _rowHeight;
     return height > 0 &&
         metrics.maxScrollExtent - metrics.minScrollExtent > height;
+  }
+
+  /// The row moves with the content: each pixel the content scrolls down
+  /// slides a pixel of row away, and each pixel up brings one back. While a
+  /// finger drags, the scroll the row took is handed back to the list, so
+  /// the row under the finger moves exactly as far as the finger did; the
+  /// list neither jumps nor runs ahead as the row's height changes. When the
+  /// scroll stops part way, the row settles at the nearer end, or shows if
+  /// the content has come to rest at its top.
+  bool _onScroll(ScrollNotification n) {
+    if (_scope == null || n.depth != 0 || n.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    switch (n) {
+      case ScrollStartNotification(:final dragDetails):
+        _userScroll = dragDetails != null;
+      case ScrollUpdateNotification(:final scrollDelta?) when _userScroll:
+        _follow(n, scrollDelta, handBack: n.dragDetails != null);
+      case OverscrollNotification(:final overscroll) when _userScroll:
+        _follow(n, overscroll, handBack: false);
+      case ScrollEndNotification():
+        _userScroll = false;
+        final atTop = n.metrics.pixels <= n.metrics.minScrollExtent;
+        if (_hidden > 0 && _hidden < 1 || atTop && _hidden > 0) {
+          _settleTo(!atTop && _hidden >= 0.5 && _mayHide(n.metrics) ? 1 : 0);
+        }
+      default:
+    }
+    return false;
+  }
+
+  void _follow(ScrollNotification n, double delta, {required bool handBack}) {
+    if (delta == 0) return;
+    if (delta > 0 && (_hidden >= 1 || !_mayHide(n.metrics))) return;
+    if (delta < 0 && _hidden <= 0) return;
+    final height = _rowHeight;
+    if (height <= 0) return;
+    _settle.stop();
+    final before = _hidden * height;
+    final after = clampDouble(before + delta, 0, height);
+    final taken = after - before;
+    if (taken == 0) return;
+    _setHidden(after / height);
+    if (handBack && !n.metrics.outOfRange) {
+      final position = n.context == null
+          ? null
+          : Scrollable.maybeOf(n.context!)?.position;
+      position?.correctPixels(position.pixels - taken);
+    }
   }
 
   /// A map's sheet raised above its opening size is being read, so the row
@@ -668,8 +779,9 @@ class _HubTabBodyState extends State<HubTabBody> {
     final raised = n.extent > n.initialExtent + 0.01;
     if (raised == _sheetRaised) return false;
     _sheetRaised = raised;
-    _setControlsHidden(
-        raised && !_controlsFocused && widget.selection == null);
+    final allowed =
+        !_controlsFocused && _holds.isEmpty && widget.selection == null;
+    _settleTo(raised && allowed ? 1 : 0);
     return false;
   }
 
@@ -677,44 +789,63 @@ class _HubTabBodyState extends State<HubTabBody> {
   /// that came back shorter) comes back, since no scroll could return it.
   bool _onMetrics(ScrollMetricsNotification n) {
     final metrics = n.metrics;
-    if (_controlsHidden &&
+    if (_hidden > 0 &&
         !_sheetRaised &&
         metrics.axis == Axis.vertical &&
         metrics.maxScrollExtent <= metrics.minScrollExtent) {
-      _setControlsHidden(false);
+      _settleTo(0);
     }
     return false;
   }
 
-  void _setControlsHidden(bool hidden) {
-    if (hidden == _controlsHidden || !mounted) return;
-    setState(() => _controlsHidden = hidden);
+  void _setHidden(double hidden) {
+    if (hidden == _hidden || !mounted) return;
+    setState(() => _hidden = hidden);
   }
 
-  /// The control row, sliding up under whatever is above it while hidden.
-  /// Hidden, it is out of the pointer, focus and semantics trees, so a
+  /// Moves the row to an end with a short ease, or at once with reduced
+  /// motion.
+  void _settleTo(double target) {
+    if (!mounted) return;
+    final duration = motionDuration(context, AppMotion.brief);
+    if (duration == Duration.zero || _hidden == target) {
+      _settle.stop();
+      _setHidden(target);
+      return;
+    }
+    _settle
+      ..value = _hidden
+      ..animateTo(target, duration: duration, curve: AppMotion.curveStandard);
+  }
+
+  /// A control asks the row to stay ([HubTabBody.holdControls]).
+  void _hold(Object owner, bool hold) {
+    final changed = hold ? _holds.add(owner) : _holds.remove(owner);
+    if (changed && hold) _settleTo(0);
+  }
+
+  /// The control row, sliding up under whatever is above it by [_hidden].
+  /// Fully hidden, it is out of the pointer, focus and semantics trees, so a
   /// screen reader never lands on a control that is not on screen.
   Widget _hidingControls(Widget controls) {
-    final hidden = _controlsHidden;
+    final gone = _hidden >= 1;
     return ClipRect(
-      child: AnimatedAlign(
+      child: Align(
         key: const Key('hub-tab-controls'),
         alignment: AlignmentDirectional.bottomCenter,
-        heightFactor: hidden ? 0 : 1,
-        duration: motionDuration(context, AppMotion.brief),
-        curve: AppMotion.curveStandard,
+        heightFactor: 1 - _hidden,
         child: ExcludeSemantics(
-          excluding: hidden,
+          excluding: gone,
           child: ExcludeFocus(
-            excluding: hidden,
+            excluding: gone,
             child: IgnorePointer(
-              ignoring: hidden,
+              ignoring: gone,
               child: Focus(
                 canRequestFocus: false,
                 skipTraversal: true,
                 onFocusChange: (focused) {
                   _controlsFocused = focused;
-                  if (focused) _setControlsHidden(false);
+                  if (focused) _settleTo(0);
                 },
                 child: KeyedSubtree(key: _controlsKey, child: controls),
               ),
@@ -735,13 +866,16 @@ class _HubTabBodyState extends State<HubTabBody> {
               final row? => _hidingControls(row),
               null => null,
             };
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ?controls,
-          ?widget.banner,
-          Expanded(child: _content()),
-        ],
+      return _HubControlsScope(
+        state: this,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ?controls,
+            ?widget.banner,
+            Expanded(child: _content()),
+          ],
+        ),
       );
     }
     // On its own: the same controls and content under a heading and a small

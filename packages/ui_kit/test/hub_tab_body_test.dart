@@ -320,32 +320,131 @@ void main() {
       return count;
     }
 
-    testWidgets('slides away while the list scrolls down, giving the list its '
-        'height, and comes back on the way up', (tester) async {
+    testWidgets('slides away pixel for pixel with the drag, the row under '
+        'the finger moving exactly as far as the finger', (tester) async {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(hub());
       await tester.pump();
       final shown = rowHeight(tester);
       final top = listTop(tester);
       expect(searchNodes(tester), 1);
-      expect(shown, greaterThan(0));
+      expect(shown, 60);
+      double rowY(int i) => tester.getTopLeft(find.text('row $i')).dy;
+      final row3 = rowY(3);
 
+      // Past the drag slop first, so every later move is a scroll.
       final gesture = await tester.startGesture(const Offset(200, 400));
+      await gesture.moveBy(const Offset(0, -30));
+      await tester.pump();
+      final row3Start = rowY(3);
+      final hiddenStart = shown - rowHeight(tester);
+      for (final step in [8.0, 6.0, 10.0]) {
+        final rowBefore = rowY(3);
+        final hiddenBefore = shown - rowHeight(tester);
+        await gesture.moveBy(Offset(0, -step));
+        await tester.pump();
+        expect(shown - rowHeight(tester), moreOrLessEquals(hiddenBefore + step),
+            reason: 'the row moved by the drag, not by a timed jump');
+        expect(rowY(3), moreOrLessEquals(rowBefore - step),
+            reason: 'the list stayed under the finger');
+      }
+      expect(rowY(3), moreOrLessEquals(row3Start - 24));
+      expect(hiddenStart + 24, lessThan(shown));
+      expect(row3, greaterThan(rowY(3)));
+
       await gesture.moveBy(const Offset(0, -200));
-      await tester.pumpAndSettle();
-      expect(rowHeight(tester), 0, reason: 'hidden while the list moves down');
+      await tester.pump();
+      expect(rowHeight(tester), 0, reason: 'clamped at fully hidden');
       expect(listTop(tester), moreOrLessEquals(top - shown),
           reason: 'the list takes the height the row held');
       expect(find.byType(AppSearchField).hitTestable(), findsNothing);
       expect(searchNodes(tester), 0, reason: 'a hidden control is not read');
 
-      await gesture.moveBy(const Offset(0, 40));
-      await tester.pumpAndSettle();
-      expect(rowHeight(tester), moreOrLessEquals(shown),
-          reason: 'any scroll back up brings the row back');
+      final rowBefore = rowY(5);
+      await gesture.moveBy(const Offset(0, 25));
+      await tester.pump();
+      expect(rowHeight(tester), moreOrLessEquals(25),
+          reason: 'scrolling up brings it back in step with the finger');
+      expect(rowY(5), moreOrLessEquals(rowBefore + 25));
       await gesture.up();
       await tester.pumpAndSettle();
+      expect(rowHeight(tester), anyOf(0.0, shown),
+          reason: 'released part way, it settles at an end');
       semantics.dispose();
+    });
+
+    testWidgets('released part way it settles at the nearer end',
+        (tester) async {
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      // Scroll the list well down first, so the top rule does not apply.
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0);
+      // Past the slop, then up until 40 of the row's 60 show.
+      final gesture = await tester.startGesture(const Offset(200, 300));
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await gesture.moveBy(Offset(0, 40 - rowHeight(tester)));
+      await tester.pump();
+      expect(rowHeight(tester), moreOrLessEquals(40));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 60, reason: '40 of 60 shown: settles shown');
+
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0);
+      final g2 = await tester.startGesture(const Offset(200, 300));
+      await g2.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await g2.moveBy(Offset(0, 20 - rowHeight(tester)));
+      await tester.pump();
+      expect(rowHeight(tester), moreOrLessEquals(20));
+      await g2.up();
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0, reason: '20 of 60 shown: settles hidden');
+    });
+
+    testWidgets('after a fling it rests fully shown or fully hidden',
+        (tester) async {
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      await tester.fling(find.byType(ListView), const Offset(0, -400), 2000);
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 0);
+      await tester.fling(find.byType(ListView), const Offset(0, 150), 1500);
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), anyOf(0.0, 60.0));
+    });
+
+    testWidgets('with reduced motion it settles at once', (tester) async {
+      await tester.pumpWidget(MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: hub(),
+      ));
+      await tester.pump();
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      final gesture = await tester.startGesture(const Offset(200, 300));
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await gesture.moveBy(Offset(0, 40 - rowHeight(tester)));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      expect(rowHeight(tester), 60, reason: 'no ease to wait for');
+    });
+
+    testWidgets('a live query keeps it on screen', (tester) async {
+      search.text = 'hill';
+      addTearDown(search.clear);
+      await tester.pumpWidget(hub());
+      await tester.pump();
+      await tester.pump();
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(rowHeight(tester), 60);
     });
 
     testWidgets('stays while its search has focus', (tester) async {
