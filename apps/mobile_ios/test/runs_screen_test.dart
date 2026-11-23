@@ -1232,6 +1232,39 @@ void main() {
   });
 
   group('RunsScreen search', () {
+    // UX critique 10 (decisions § 2610): Sort had its own icon beside the
+    // search, which left the box "Search run na…" at 412 dp and a bare
+    // magnifier at 2x. It lives in the Filters sheet, as on Explore and
+    // Races, and shows as a removable chip while it is not the default.
+    testWidgets('Sort is in the Filters sheet, not an icon beside the search',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = Preferences();
+      await prefs.init();
+      _runsDir = Directory.systemTemp.createTempSync('runs_screen_test_');
+      // ignore: invalid_use_of_visible_for_testing_member
+      final runStore = LocalRunStore()..debugSeed(_makeRuns(3), dir: _runsDir);
+      await _pump(tester,
+          runStore: runStore, routeStore: LocalRouteStore(), prefs: prefs);
+      final bar = find.byKey(const ValueKey('runs-filter-bar'));
+      expect(find.descendant(of: bar, matching: find.byIcon(Icons.sort)),
+          findsNothing);
+      expect(find.text('Search runs'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('filter-bar-filters')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sort'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('runs-sort-longest')));
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Remove filter: Longest distance'), findsOneWidget);
+      await tester.ensureVisible(find.byTooltip('Remove filter: Longest distance'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Remove filter: Longest distance'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Remove filter: Longest distance'), findsNothing);
+    });
+
     testWidgets('finds a run by its name, folding case and accents, and '
         'clears in one tap', (tester) async {
       SharedPreferences.setMockInitialValues({});

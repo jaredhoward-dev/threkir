@@ -1075,6 +1075,22 @@ class _RunsScreenState extends State<RunsScreen>
     _persistFilters();
   }
 
+  void _setSort(_RunsSort v) {
+    setState(() {
+      _sort = v;
+      _resetPaging();
+      _recompute();
+    });
+    _persistFilters();
+  }
+
+  String _sortLabel(AppLocalizations l10n, _RunsSort sort) => switch (sort) {
+        _RunsSort.newest => l10n.historySortNewest,
+        _RunsSort.oldest => l10n.historySortOldest,
+        _RunsSort.longest => l10n.historySortLongest,
+        _RunsSort.fastest => l10n.historySortFastest,
+      };
+
   void _setSource(RunSource? v) {
     setState(() {
       _sourceFilter = v;
@@ -1098,6 +1114,12 @@ class _RunsScreenState extends State<RunsScreen>
           onRemove: () => _setSource(null),
           removeTooltip:
               l10n.filterBarRemoveFilter(_runSourceLabel(l10n, source)),
+        ),
+      if (_sort != _RunsSort.newest)
+        ActiveFilter(
+          label: _sortLabel(l10n, _sort),
+          onRemove: () => _setSort(_RunsSort.newest),
+          removeTooltip: l10n.filterBarRemoveFilter(_sortLabel(l10n, _sort)),
         ),
     ];
     return FilterBar(
@@ -1161,6 +1183,29 @@ class _RunsScreenState extends State<RunsScreen>
                         selected: _sourceFilter == src,
                         onSelected: (_) {
                           _setSource(src);
+                          setSheet(() {});
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpace.md),
+              Text(l10n.filterBarSort, style: theme.textTheme.titleSmall),
+              const SizedBox(height: AppSpace.sm),
+              // semantics-children: a group name, read once before the controls inside it
+              Semantics(
+                container: true,
+                label: l10n.filterBarSort,
+                child: Wrap(
+                  spacing: AppSpace.sm,
+                  children: [
+                    for (final sort in _RunsSort.values)
+                      ChoiceChip(
+                        key: ValueKey('runs-sort-${sort.name}'),
+                        label: Text(_sortLabel(l10n, sort)),
+                        selected: _sort == sort,
+                        onSelected: (_) {
+                          _setSort(sort);
                           setSheet(() {});
                         },
                       ),
@@ -1351,8 +1396,9 @@ class _RunsScreenState extends State<RunsScreen>
     _persistFilters();
   }
 
-  /// Range and sort (list mode), then the cloud slot, at the end of the
-  /// control row. The range and count read in the filter header below.
+  /// The range (list mode), then the cloud slot, at the end of the control
+  /// row. Sort is in the Filters sheet, as on Explore and Races, so the
+  /// search box keeps room to say what it searches (decisions § 2610). The range and count read in the filter header below.
   List<Widget> _runActions(AppLocalizations l10n) {
     final unsyncedCount = widget.runStore.unsyncedCount;
     final blockedCount = widget.runStore.blockedCount;
@@ -1383,41 +1429,6 @@ class _RunsScreenState extends State<RunsScreen>
                     child: Text(_rangeLabel(r, l10n)),
                   ))
               .toList(),
-        ),
-        if (!_timelineMode)
-        PopupMenuButton<_RunsSort>(
-          icon: const Icon(Icons.sort),
-          tooltip: l10n.historySortTooltip,
-          onSelected: (v) {
-            setState(() {
-              _sort = v;
-              _resetPaging();
-              _recompute();
-            });
-            _persistFilters();
-          },
-          itemBuilder: (_) => [
-            CheckedPopupMenuItem(
-              value: _RunsSort.newest,
-              checked: _sort == _RunsSort.newest,
-              child: Text(l10n.historySortNewest),
-            ),
-            CheckedPopupMenuItem(
-              value: _RunsSort.oldest,
-              checked: _sort == _RunsSort.oldest,
-              child: Text(l10n.historySortOldest),
-            ),
-            CheckedPopupMenuItem(
-              value: _RunsSort.longest,
-              checked: _sort == _RunsSort.longest,
-              child: Text(l10n.historySortLongest),
-            ),
-            CheckedPopupMenuItem(
-              value: _RunsSort.fastest,
-              checked: _sort == _RunsSort.fastest,
-              child: Text(l10n.historySortFastest),
-            ),
-          ],
         ),
         if (_fetching || _syncing)
           const Padding(
