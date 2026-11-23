@@ -1234,8 +1234,8 @@ void main() {
   group('RunsScreen search', () {
     // UX critique 10 (decisions § 2610): Sort had its own icon beside the
     // search, which left the box "Search run na…" at 412 dp and a bare
-    // magnifier at 2x. It lives in the Filters sheet, as on Explore and
-    // Races, and shows as a removable chip while it is not the default.
+    // magnifier at 2x. It lives in the Filters sheet, as on Explore, and
+    // shows as a removable chip while it is not the default.
     testWidgets('Sort is in the Filters sheet, not an icon beside the search',
         (tester) async {
       SharedPreferences.setMockInitialValues({});

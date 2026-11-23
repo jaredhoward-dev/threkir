@@ -1397,7 +1397,7 @@ class _RunsScreenState extends State<RunsScreen>
   }
 
   /// The range (list mode), then the cloud slot, at the end of the control
-  /// row. Sort is in the Filters sheet, as on Explore and Races, so the
+  /// row. Sort is in the Filters sheet, as on Explore, so the
   /// search box keeps room to say what it searches (decisions § 2610). The range and count read in the filter header below.
   List<Widget> _runActions(AppLocalizations l10n) {
     final unsyncedCount = widget.runStore.unsyncedCount;
