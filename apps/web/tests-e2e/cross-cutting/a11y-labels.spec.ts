@@ -25,6 +25,7 @@ test.describe('icon-only control accessible names', () => {
 
 	test('the RouteExplorer clear-search button has an accessible name', async ({ page }) => {
 		await page.goto('/routes?tab=explore');
+		await page.getByTestId('explore-search-open').click();
 		const search = page.getByPlaceholder(/Search routes by name/);
 		await expect(search).toBeVisible({ timeout: 10_000 });
 		await search.fill('park');
@@ -57,6 +58,8 @@ test.describe('placeholder-only text inputs now expose accessible names', () => 
 
 	test('RouteExplorer search input has an accessible name', async ({ page }) => {
 		await page.goto('/routes?tab=explore');
+		// Search is a button on the map that opens the field (decisions § 2611).
+		await page.getByRole('button', { name: 'Search routes', exact: true }).click();
 		// AppSearchField is an `<input type="search">`, whose role is searchbox.
 		const search = page.getByRole('searchbox', { name: 'Search routes', exact: true });
 		await expect(search).toBeVisible({ timeout: 10_000 });

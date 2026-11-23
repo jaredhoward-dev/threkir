@@ -69,6 +69,8 @@ const STATIC_DEMO_MOUNTS: Record<string, RegExp> = {
 const CATALOGUE_MOUNTS: Record<string, RegExp> = {
 	'routes/parks/[region]/[park]/+page.svelte':
 		/import \{[^}]*\bfetchParkCourses\b[^}]*\} from '#lib\/core\/data\.ts'/,
+	'routes/segments/+page.svelte':
+		/import \{[^}]*\bfetchGlobalSegmentsWithError\b[^}]*\} from '#lib\/core\/data\.ts'/,
 };
 
 function svelteFiles(dir: string, out: string[] = []): string[] {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { m } from '#lib/i18n/store.svelte.ts';
+	import RoutesViewMenu from './RoutesViewMenu.svelte';
 
 	// Routes' views, under the run-surface strip: Mine · Explore, and in Explore
 	// Routes · Segments (issue #1374, owner decision 1). The segment catalogue
@@ -8,12 +9,19 @@
 	// Explore's chips. Explore leads with the map: the routes heatmap is its
 	// first entry. Each view is its own URL (`/routes`, `/routes?tab=explore`,
 	// `/segments`), so these are links, like RunSurfaceTabs, not an ARIA
-	// tablist.
+	// tablist. At phone width the two rows give way to one menu
+	// (RoutesViewMenu): over Mine's list here, and on Explore's map, which
+	// carries its own, so nothing is drawn here (decisions § 2611).
 	let { view }: { view: 'mine' | 'routes' | 'segments' } = $props();
 
 	const explore = $derived(view !== 'mine');
 </script>
 
+{#if view === 'mine'}
+	<div class="narrow-menu"><RoutesViewMenu {view} /></div>
+{/if}
+
+<div class="wide">
 <nav class="view-tabs" aria-label={m('routesPage.sectionLabel')} data-testid="routes-view-nav">
 	<a
 		class="view-tab"
@@ -62,8 +70,23 @@
 		{/if}
 	</div>
 {/if}
+</div>
 
 <style>
+	.narrow-menu {
+		display: none;
+		margin-bottom: var(--space-md);
+	}
+
+	@media (max-width: 40rem) {
+		.narrow-menu {
+			display: block;
+		}
+		.wide {
+			display: none;
+		}
+	}
+
 	.view-tabs {
 		display: flex;
 		gap: 0.5rem;

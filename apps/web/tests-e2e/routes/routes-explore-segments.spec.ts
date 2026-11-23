@@ -59,10 +59,12 @@ test.describe('Routes → Explore → Segments', () => {
 		await expect(page.getByTestId('routes-explore-kind')).toHaveCount(0);
 	});
 
-	test('at a phone width the view row and the strip stay inside the page', async ({ page }) => {
+	test('at a phone width the view menu and the strip stay inside the page', async ({ page }) => {
 		await page.setViewportSize({ width: 360, height: 740 });
 		await page.goto('/routes?tab=explore');
-		await expect(page.getByTestId('routes-explore-kind')).toBeVisible({ timeout: 10_000 });
+		// The two view rows give way to one menu on the map (decisions § 2611).
+		await expect(page.getByTestId('routes-view-menu-button')).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByTestId('routes-explore-kind')).toBeHidden();
 		const overflow = await page.evaluate(
 			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
 		);

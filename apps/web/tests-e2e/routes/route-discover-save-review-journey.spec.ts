@@ -37,16 +37,16 @@ import { acceptCookieConsent } from '../fixtures/helpers';
  * drives every assertion through the real UI.
  *
  * DISCOVERY PATH: the real community explorer. /routes?tab=explore mounts
- * RouteExplorer, whose search box reads the `public_routes` view
+ * RouteExplorer, whose map Search reads the `public_routes` view
  * (name ILIKE). The route is planted with a unique name so the search
  * narrows to exactly this one row. The SAVE write goes through the
- * explorer's `.save-btn` (→ saved_routes), and the REVIEW write goes
+ * route's card on the map (→ saved_routes), and the REVIEW write goes
  * through the route-detail Rate form (→ route_reviews) — both real UI.
  *
  * MAP NOTE: /routes/[id] mounts a MapLibre canvas (RunMap) and the
  * explorer cards lazy-fetch an SVG track preview. Every assertion here
  * targets DOM (headings, the .review-card / .review-comment rows, the
- * .avg-rating text in the Reviews header, the .save-btn saved state, the
+ * .avg-rating text in the Reviews header, the card's Save pressed state, the
  * My-routes .route-card[href]) — never canvas paint — to dodge the
  * animation-wait hangs the lifecycle spec documents.
  */
@@ -129,51 +129,43 @@ test.describe('saga: discover a public route, save it, review it (cross-user)', 
 
 		try {
 			await test.step('1. DISCOVER — the public route surfaces in the community Explore search', async () => {
-				// /routes?tab=explore mounts RouteExplorer. Its search box
-				// drives the public_routes search (name ILIKE), so typing the
-				// unique name + Enter narrows to exactly this one row. No
-				// networkidle wait — the page holds an open realtime socket
-				// (it never settles); poll for the concrete card instead.
+				// Explore is map first (decisions § 2611): its Search button opens
+				// a field over the map that reads the public_routes view (name
+				// ILIKE), so the unique name narrows to exactly this one row. No
+				// networkidle wait — the page holds an open realtime socket (it
+				// never settles); poll for the concrete result instead.
 				await page.goto('/routes?tab=explore');
 
+				await page.getByTestId('explore-search-open').click();
 				const searchBox = page.getByPlaceholder('Search routes by name…');
 				await expect(searchBox).toBeVisible({ timeout: 15_000 });
 				await searchBox.fill(routeName);
-				await searchBox.press('Enter');
 
-				// The explorer card is a .route-card wrapping an
-				// <a class="route-link" href="/routes/{id}?from=explore">.
-				const card = page.locator(`.route-card:has(a.route-link[href^="/routes/${routeId}"])`);
-				await expect(card).toBeVisible({ timeout: 15_000 });
-				await expect(card).toContainText(routeName);
+				const result = page.getByTestId('explore-search-result').filter({ hasText: routeName });
+				await expect(result).toBeVisible({ timeout: 15_000 });
+				await result.click();
+
+				const card = page.getByTestId('explore-route-card');
+				await expect(card.getByRole('heading', { name: routeName })).toBeVisible({ timeout: 15_000 });
 			});
 
-			await test.step('2. SAVE — bookmark the route from the explorer card', async () => {
-				const card = page.locator(`.route-card:has(a.route-link[href^="/routes/${routeId}"])`);
-				const saveBtn = card.locator('button.save-btn');
+			await test.step('2. SAVE — bookmark the route from its card on the map', async () => {
+				const saveBtn = page.getByTestId('explore-route-card').getByTestId('explore-card-save');
 				await expect(saveBtn).toBeVisible({ timeout: 10_000 });
-				// Pre-save the icon is `bookmark_add` and the button is not
-				// `.saved`; the save writes a saved_routes reference (not a
-				// clone, decisions §30).
-				await expect(saveBtn).not.toHaveClass(/saved/);
+				// The save writes a saved_routes reference (not a clone,
+				// decisions §30). Assert on the durable pressed state, not the
+				// transient toast.
+				await expect(saveBtn).toHaveAttribute('aria-pressed', 'false');
 				await saveBtn.click();
-				// Optimistic flip to the saved state — icon → `bookmark`,
-				// `.saved` class added. A success toast also fires; assert
-				// on the durable button state, not the transient toast.
-				await expect(saveBtn).toHaveClass(/saved/, { timeout: 10_000 });
-				// Icon ligature flips from `bookmark_add` to exactly `bookmark`
-				// (toHaveText is exact, so it won't false-match the `bookmark_add`
-				// substring the unsaved state renders).
+				await expect(saveBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
 				await expect(saveBtn.locator('.material-symbols')).toHaveText('bookmark');
 			});
 
 			await test.step('3. OPEN — go to the route detail (non-owner view)', async () => {
-				// Open via the explorer card's link so the from=explore
-				// back-link path is exercised too. The detail page waits for
-				// auth.ready() then fetches the row; poll for the h1.
-				await page
-					.locator(`.route-card a.route-link[href^="/routes/${routeId}"]`)
-					.click();
+				// Open via the card's link so the from=explore back-link path is
+				// exercised too. The detail page waits for auth.ready() then
+				// fetches the row; poll for the h1.
+				await page.getByTestId('explore-card-see-route').click();
 				await page.waitForURL(new RegExp(`/routes/${routeId}`), { timeout: 10_000 });
 				await expect(
 					page.getByRole('heading', { name: routeName, level: 1 })

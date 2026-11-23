@@ -4,10 +4,10 @@ import { USER_A } from '../fixtures/users';
 import { acceptCookieConsent } from '../fixtures/helpers';
 
 /**
- * /routes?tab=explore — when the public-route search read fails, the
- * Explore surface shows a retry affordance instead of the misleading
- * "no matches" empty state (which used to be indistinguishable from a
- * genuine load failure — searchPublicRoutes swallowed the error to []).
+ * /routes?tab=explore — when the public-route search read fails, the search
+ * panel says the read failed instead of "no routes match", which a reader
+ * cannot tell from a real empty result (searchPublicRoutes used to swallow
+ * the error to []).
  */
 
 test.describe('/routes?tab=explore — search failure', () => {
@@ -17,11 +17,10 @@ test.describe('/routes?tab=explore — search failure', () => {
 		await acceptCookieConsent(context);
 	});
 
-	test('a failed search shows a retry card, not the empty state', async ({ page }) => {
+	test('a failed search says so, not that nothing matched', async ({ page, mockRoute }) => {
 		// The search reads the public_routes view with an `order`; the other
-		// public_routes reads on the page (saved-route lookup, route detail)
-		// carry none, so only the search fails.
-		await page.route('**/rest/v1/public_routes*', async (route) => {
+		// public_routes reads on the page carry none, so only the search fails.
+		await mockRoute(page, '**/rest/v1/public_routes*', async (route) => {
 			if (!new URL(route.request().url()).searchParams.has('order')) {
 				await route.fallback();
 				return;
@@ -34,12 +33,11 @@ test.describe('/routes?tab=explore — search failure', () => {
 		});
 
 		await page.goto('/routes?tab=explore');
+		await page.getByTestId('explore-search-open').click();
+		await page.getByTestId('explore-search').fill('park');
 
-		await expect(page.getByText("Couldn't load routes", { exact: true })).toBeVisible({
-			timeout: 10_000
-		});
-		await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
-		// Not the legitimately-empty state.
-		await expect(page.getByText('No public routes here yet')).toHaveCount(0);
+		const panel = page.getByTestId('explore-search-panel');
+		await expect(panel.getByText("Couldn't load routes", { exact: true })).toBeVisible({ timeout: 10_000 });
+		await expect(panel.getByText('No routes match your search')).toHaveCount(0);
 	});
 });

@@ -73,7 +73,9 @@ test.describe('run-surface pages share one page rhythm', () => {
 			.getByRole('heading', { level: 1 })
 			.evaluate((el) => Math.round(el.getBoundingClientRect().x));
 
-		await page.getByTestId('segment-catalogue-list').getByRole('link').first().click();
+		// A list card shows its segment on the map; the card there opens the page.
+		await page.getByTestId('segment-catalogue-list').getByRole('button').first().click();
+		await page.getByTestId('explore-card-details').click();
 		await page.waitForURL(/\/segments\/[0-9a-f-]{36}$/, { timeout: 10_000 });
 		await expect(page.locator('nav.sidebar')).toBeVisible({ timeout: 10_000 });
 
