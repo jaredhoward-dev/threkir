@@ -828,6 +828,11 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   // Off-route
   double? _offRouteDistance;
   bool _offRouteWarned = false;
+
+  /// The runner has come within [_offRouteThresholdMetres] of the route
+  /// line this recording; until then a waiting course keeps the route's
+  /// off-route warning quiet.
+  bool _joinedRoute = false;
   static const double _offRouteThresholdMetres = 40;
 
   // Off-route → auto-notify safety contact (docs/features/safety.md).
@@ -1362,6 +1367,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   Future<void> _loadLiveCourse() async {
     final load = ++_liveCourseLoad;
     _liveCourse = null;
+    _joinedRoute = false;
     _liveCourseSettled = false;
     final routeId = _selectedRoute?.id;
     if (routeId == null) {
@@ -1573,6 +1579,12 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
     };
   }
 
+  /// The top chip's second line until timing starts: the runner reads it
+  /// on reaching the box, not only at Start.
+  String? _topChipHint() => _liveCourse?.phase == LiveCoursePhase.waiting
+      ? _l10n.runCourseTimingHint
+      : null;
+
   /// The course time starts on leaving the start box, not at Start.
   void _onCourseArmed() {
     if (!mounted || _stopRequested) return;
@@ -1586,27 +1598,25 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       debugPrint('course timing hint cue failed: $e');
     }
     try {
-      _courseCue.value = message;
-      _courseCueTimer?.cancel();
-      _courseCueTimer = Timer(const Duration(seconds: 6), () {
-        if (mounted) _courseCue.value = null;
-      });
-    } catch (e) {
-      debugPrint('course timing hint card failed: $e');
-    }
-    try {
       _announceA11yState(message);
     } catch (e) {
       debugPrint('course timing hint announce failed: $e');
     }
   }
 
-  /// A course is being timed live: its off-course warning stands in for the
-  /// route's.
-  bool get _courseTiming => _liveCourse?.phase == LiveCoursePhase.timing;
+  /// The route's off-route warning stays quiet while a followed course is
+  /// waiting and the runner has not yet joined the route line, since they
+  /// are heading to its start and the chip says how far; and while the
+  /// course is timed, when the course's own warning stands in.
+  bool get _routeOffRouteQuiet => switch (_liveCourse?.phase) {
+        LiveCoursePhase.waiting => !_joinedRoute,
+        LiveCoursePhase.timing => true,
+        _ => false,
+      };
 
   void _clearLiveCourse() {
     _liveCourseLoad++;
+    _joinedRoute = false;
     _liveCourse = null;
     _liveCourseName = null;
     _liveCourseSettled = false;
@@ -2162,6 +2172,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
   /// turn announcer and the cutoff legs move together.
   void _setFollowedRoute(cm.Route? route) {
     setState(() => _selectedRoute = route);
+    _joinedRoute = false;
     _rebuildTurnAnnouncer();
     _loadCutoffLegs();
     unawaited(_lookUpFollowedCourse());
@@ -3574,6 +3585,9 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _storedTrack = snapshot.storedTrack;
       _currentPosition = snapshot.currentPosition;
       _offRouteDistance = snapshot.offRouteDistanceMetres;
+      if ((_offRouteDistance ?? double.infinity) <= _offRouteThresholdMetres) {
+        _joinedRoute = true;
+      }
       _routeRemaining = snapshot.routeRemainingMetres;
       _routeAlong = snapshot.routeAlongMetres;
       // Mirror only — the visible banner flips through _checkGpsHealth's
@@ -3771,8 +3785,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       // audio_cues TTS bridge can throw if the engine hasn't initialised.
       try {
         final off = snapshot.offRouteDistanceMetres;
-        // A course being timed says the course's own warning instead.
-        if (off != null && !_courseTiming) {
+        if (off != null && !_routeOffRouteQuiet) {
           if (off > _offRouteThresholdMetres && !_offRouteWarned) {
             _offRouteWarned = true;
             if (widget.preferences.audioCues &&
@@ -5078,6 +5091,7 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
       _lapCount = 0;
       _offRouteDistance = null;
       _offRouteWarned = false;
+      _joinedRoute = false;
       _offRouteAlertDetector = null;
       _offRouteAlertFiring = false;
       _safetyNudgeVisible = false;
@@ -6030,44 +6044,19 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
                             onTap: _onLiveShareIndicatorTap);
                       },
                     ),
-                    const Spacer(),
-                    ValueListenableBuilder<_LiveStats>(
-                      valueListenable: _statsNotifier,
-                      builder: (context, stats, _) {
-                        final label = _topChipLabel(stats.routeRemaining);
-                        if (label == null) return const SizedBox.shrink();
-                        return Container(
-                          key: const ValueKey('run-top-chip'),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surface
-                                .withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 8),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.flag_outlined,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                label,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+                    Expanded(
+                      child: ValueListenableBuilder<_LiveStats>(
+                        valueListenable: _statsNotifier,
+                        builder: (context, stats, _) {
+                          final label = _topChipLabel(stats.routeRemaining);
+                          if (label == null) return const SizedBox.shrink();
+                          return Align(
+                            alignment: Alignment.topRight,
+                            child: RunTopChip(
+                                label: label, hint: _topChipHint()),
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -6080,10 +6069,10 @@ class _RunScreenState extends State<RunScreen> with WidgetsBindingObserver {
                 valueListenable: _offCourseCue,
                 builder: (context, offCourse, _) => RunTopBanners(
                   offCourseMessage: offCourse,
-                  offRouteMetres: off != null &&
+                  offRouteDistance: off != null &&
                           off > _offRouteThresholdMetres &&
-                          !_courseTiming
-                      ? off
+                          !_routeOffRouteQuiet
+                      ? UnitFormat.shortDistance(off, _unit)
                       : null,
                   permissionLost: _permissionLost,
                   gpsLost: _gpsLost,
@@ -7200,11 +7189,71 @@ class RunTopOverlay extends StatelessWidget {
   }
 }
 
+/// The chip at the top right while recording: how far to the route's end
+/// or the course's start or finish, and under it a quieter [hint].
+class RunTopChip extends StatelessWidget {
+  const RunTopChip({super.key, required this.label, this.hint});
+
+  final String label;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = this.hint;
+    return Container(
+      key: const ValueKey('run-top-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 8),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(
+              Icons.flag_outlined,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  key: const ValueKey('run-top-chip-label'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (hint != null)
+                  Text(
+                    hint,
+                    key: const ValueKey('run-top-chip-hint'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class RunTopBanners extends StatelessWidget {
   const RunTopBanners({
     super.key,
     this.offCourseMessage,
-    required this.offRouteMetres,
+    required this.offRouteDistance,
     required this.permissionLost,
     required this.gpsLost,
     required this.weakGps,
@@ -7220,9 +7269,10 @@ class RunTopBanners extends StatelessWidget {
   /// banner's place while a course is timed.
   final String? offCourseMessage;
 
-  /// Metres off the planned route, already gated on the alert threshold by
-  /// the caller; null hides the banner.
-  final double? offRouteMetres;
+  /// How far off the planned route, in the runner's unit ("437 yd"),
+  /// already gated on the alert threshold by the caller; null hides the
+  /// banner.
+  final String? offRouteDistance;
   final bool permissionLost;
   final bool gpsLost;
   final bool weakGps;
@@ -7271,13 +7321,14 @@ class RunTopBanners extends StatelessWidget {
           ),
         // Off-route banner — independent of the status chain below, so
         // both can show at once and stack.
-        if (offRouteMetres != null)
+        if (offRouteDistance case final distance?)
           Center(
             child: ListCard(
+              key: const ValueKey('route-off-route'),
               color: semantic.danger,
               dense: true,
               child: Text(
-                l10n.runOffRoute(offRouteMetres!.round()),
+                l10n.runOffRoute(distance),
                 style: TextStyle(
                     color: semantic.onDanger, fontWeight: FontWeight.w600),
               ),

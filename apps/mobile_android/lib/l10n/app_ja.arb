@@ -652,7 +652,7 @@
   "runStatsPageA11yLabel": "統計ページ {page}/{total}",
   "runStatsNextPageA11yHint": "次の統計を表示します",
   "runRouteRemaining": "残り {distance}",
-  "runOffRoute": "コース外 — {metres} m 離れています",
+  "runOffRoute": "コース外 — {distance} 離れています",
   "runPermissionRevoked": "位置情報の権限が取り消されました",
   "runGpsLost": "GPS信号を失いました — 開けた場所へ移動してください",
   "runWeakGps": "GPSが弱い — 距離は一時停止中",

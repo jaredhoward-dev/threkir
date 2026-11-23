@@ -2478,8 +2478,8 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
-  String runOffRoute(int metres) {
-    return 'Hors parcours — à $metres m';
+  String runOffRoute(String distance) {
+    return 'Hors parcours — à $distance';
   }
 
   @override
