@@ -660,6 +660,9 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
     final bar = _filterBar(l10n);
     return HubTabBody(
       title: l10n.exploreRoutesTitle,
+      // A map never scrolls the hub's large title away; at a large text size
+      // it kept a sixth of a small phone from the map (decisions § 2610).
+      collapsesHubTitle: true,
       filters: widget.chrome?.above(bar) ?? bar,
       onRefresh: _mode == _ExploreMode.nearMe ? _searchNearby : _search,
       // The map keeps the drags that start on it and the Fitness hub swipes
