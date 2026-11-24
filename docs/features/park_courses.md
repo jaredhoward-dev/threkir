@@ -565,7 +565,13 @@ platforms:
   centroid, else the middle of the box round its course lines (most
   catalogue parks carry no centroid; the `park_map` parity pair,
   `parkMarkerPoint`, `fixtures/park_map_cases.json`), and a park with
-  neither has no pin but stays in the list. The search filters the pins and
+  neither has no pin but stays in the list. Where pins would overlap at the
+  current zoom (a 200 x 60 px box on mobile, 224 x 60 on web), one **N
+  parks** pill stands for the crowd and zooms in on it, at most to zoom 14,
+  from which every park gets its own pin (`groupOverlapping`, same pair;
+  parks with more courses are placed first so they keep their pill). The
+  first cut drew every pill at every zoom, and a regional view of Virginia
+  stacked them into an unreadable pile. The search filters the pins and
   the list together (same `parkSearchMatches` rule; on mobile it sits on the
   map's top edge in the solid header, because a floating field covered Near
   me and the List button at 2x text on a 320 dp phone). **Near me** centres
@@ -1443,13 +1449,16 @@ These gate going live, not the code:
 
 - Map first (decisions § 2612): the `park_map` pair's shared table
   `fixtures/park_map_cases.json` (`parks/park_map.test.ts` ↔
-  `test/park_map_test.dart`, 10 each: centroid, course-box fallback, an
+  `test/park_map_test.dart`, 16 each: centroid, course-box fallback, an
   unusable centroid, skipped points, no point; edges and the antimeridian for
-  the view count); `parks/park_course_colours.test.ts` holds the web course
+  the view count; apart, overlapping, touching, order and no-snowball for
+  `groupOverlapping`); `park_courses_screen_test.dart` pins the "2 parks"
+  pill and its zoom-in; `parks/park_course_colours.test.ts` holds the web course
   colours to app.css's `--kind-*` marks. Playwright
   `parks/parks-map-first.spec.ts` at 390 px: the index is a map, List opens
   `?view=list` and back returns to the map, a pin names its park and course
-  count and opens it, a park opens on its map with the whole long name on
+  count and opens it, two crowded parks share a "2 parks" button that zooms
+  in until each has its own pin, a park opens on its map with the whole long name on
   its card, a card previews with Board (and no See the route without an
   official route), About this park holds the description, website and
   notices, and nothing scrolls sideways at 320 px. Flutter
