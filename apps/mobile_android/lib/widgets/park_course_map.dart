@@ -12,7 +12,7 @@ import '../course_jump.dart';
 import '../gate_crossing.dart' show Gate;
 import '../l10n/gen/app_localizations.dart';
 import '../park_courses.dart' show CourseCheckpoint, checkpointMarks;
-import '../park_map.dart' show ParkMapBounds, ParkMapPoint;
+import '../park_map.dart' show ParkMapBounds, ParkMapPoint, groupOverlapping;
 import '../run_stats.dart' show haversineMetres;
 import 'live_run_map.dart'
     show
@@ -1171,6 +1171,20 @@ class ParksMapState extends State<ParksMap> {
     });
   }
 
+  /// Zooms to the parks of one crowded group until their pills part.
+  void _openGroup(List<ParkMapPin> group) {
+    if (!_ready) return;
+    _readerMoved = true;
+    _map.fitCamera(
+      CameraFit.coordinates(
+        coordinates: [for (final p in group) LatLng(p.point.lat, p.point.lng)],
+        padding: const EdgeInsets.all(72),
+        maxZoom: _kParkPinsUngroupZoom,
+      ),
+    );
+    _report();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1207,27 +1221,160 @@ class ParksMapState extends State<ParksMap> {
         ),
         children: [
           basemapTileLayer(urlTemplate: currentTileUrl(context)),
-          MarkerLayer(
-            key: const ValueKey('parks-map-pins'),
-            markers: [
-              for (final p in widget.pins)
-                Marker(
-                  point: LatLng(p.point.lat, p.point.lng),
-                  width: 200,
-                  height: 76,
-                  alignment: Alignment.topCenter,
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: _ParkPinChip(
-                      key: ValueKey('parks-map-pin-${p.id}'),
-                      pin: p,
-                      onTap: () => widget.onOpen(p.id),
-                    ),
-                  ),
-                ),
-            ],
+          _ParkPinsLayer(
+            pins: widget.pins,
+            onOpen: widget.onOpen,
+            onOpenGroup: _openGroup,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// From this zoom up every park gets its own pill, even two on one spot: a
+/// crowded group's tap zooms to here at most, so it always parts.
+const double _kParkPinsUngroupZoom = 14;
+
+/// The screen box one park pill may take, its marker at the bottom centre:
+/// the marker's width, and two lines of name.
+const double _kParkPinWidth = 200;
+const double _kParkPinHeight = 60;
+
+/// The parks' pins at the map's current zoom: a pill per park where it has
+/// room, and where pills would overlap, one "N parks" pill for the crowd
+/// that zooms in on it ([groupOverlapping]). Parks with more courses are
+/// placed first, so they keep their own pill. Rebuilds with the camera.
+class _ParkPinsLayer extends StatelessWidget {
+  final List<ParkMapPin> pins;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<List<ParkMapPin>> onOpenGroup;
+
+  const _ParkPinsLayer({
+    required this.pins,
+    required this.onOpen,
+    required this.onOpenGroup,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final camera = MapCamera.of(context);
+    final ordered = [...pins]..sort((a, b) {
+        final byCount = b.courseCount.compareTo(a.courseCount);
+        return byCount != 0 ? byCount : a.name.compareTo(b.name);
+      });
+    final groups = camera.zoom >= _kParkPinsUngroupZoom
+        ? [
+            for (var i = 0; i < ordered.length; i++) [i],
+          ]
+        : groupOverlapping(
+            [
+              for (final p in ordered)
+                if (camera.projectAtZoom(LatLng(p.point.lat, p.point.lng))
+                    case final o)
+                  (x: o.dx, y: o.dy),
+            ],
+            width: _kParkPinWidth,
+            height: _kParkPinHeight,
+          );
+    return MarkerLayer(
+      key: const ValueKey('parks-map-pins'),
+      markers: [
+        for (final g in groups)
+          if (g.length == 1)
+            Marker(
+              point: LatLng(ordered[g.first].point.lat, ordered[g.first].point.lng),
+              width: _kParkPinWidth,
+              height: 76,
+              alignment: Alignment.topCenter,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _ParkPinChip(
+                  key: ValueKey('parks-map-pin-${ordered[g.first].id}'),
+                  pin: ordered[g.first],
+                  onTap: () => onOpen(ordered[g.first].id),
+                ),
+              ),
+            )
+          else
+            () {
+              final members = [for (final i in g) ordered[i]];
+              final lat = members.fold<double>(0, (s, p) => s + p.point.lat) /
+                  members.length;
+              final lng = members.fold<double>(0, (s, p) => s + p.point.lng) /
+                  members.length;
+              return Marker(
+                point: LatLng(lat, lng),
+                width: _kParkPinWidth,
+                height: 76,
+                alignment: Alignment.topCenter,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _ParkGroupChip(
+                    key: ValueKey('parks-map-group-${members.first.id}'),
+                    count: members.length,
+                    onTap: () => onOpenGroup(members),
+                  ),
+                ),
+              );
+            }(),
+      ],
+    );
+  }
+}
+
+/// A crowd of parks too close to label at this zoom: "N parks", which zooms
+/// in on them.
+class _ParkGroupChip extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _ParkGroupChip({super.key, required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final text = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onPrimaryContainer,
+    );
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Semantics(
+        button: true,
+        label: l10n.parksMapGroupLabel(count),
+        onTap: onTap,
+        excludeSemantics: true,
+        child: Material(
+          color: theme.colorScheme.primaryContainer,
+          elevation: 2,
+          shape: StadiumBorder(
+            side: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const StadiumBorder(),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 14, 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.zoom_in,
+                      size: 20,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(l10n.parksMapGroup(count), style: text),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

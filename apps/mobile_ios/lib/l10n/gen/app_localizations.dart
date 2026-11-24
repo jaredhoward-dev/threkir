@@ -35871,6 +35871,18 @@ abstract class AppLocalizations {
   /// **'Map of park courses'**
   String get parksMapLabel;
 
+  /// Parks map (decisions § 2612): the pill standing for several parks whose own pills would overlap at this zoom; tapping it zooms in on them. n is how many parks. Web key parks.mapGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one {{n} park} other {{n} parks}}'**
+  String parksMapGroup(int n);
+
+  /// Screen-reader name of the parks map pill standing for several crowded parks (parksMapGroup); tapping it zooms in. Web key parks.mapGroupLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one {{n} park here. Zoom in to see it} other {{n} parks here. Zoom in to see them}}'**
+  String parksMapGroupLabel(int n);
+
   /// Screen-reader name of a park's pin on the parks map: the park's name and its course count (parksCourseCount, already formatted). Web key parks.markerLabel.
   ///
   /// In en, this message translates to:

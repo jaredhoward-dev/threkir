@@ -6129,6 +6129,8 @@
   "parksListButton": "{n, plural, other {リスト · 公園{n}か所}}",
   "parksHowItWorks": "公園コースのしくみ",
   "parksMapLabel": "公園コースの地図",
+  "parksMapGroup": "{n, plural, other {公園{n}か所}}",
+  "parksMapGroupLabel": "{n, plural, other {ここに公園が{n}か所あります。拡大して表示}}",
   "parksMapMarkerLabel": "{park}、{count}",
   "parksAboutPark": "この公園について",
   "parksStartHere": "ここからスタート",

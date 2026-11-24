@@ -8072,6 +8072,8 @@ export const messages = {
 	"parks.showMap": "Carte",
 	"parks.howItWorks": "Comment fonctionnent les parcours des parcs",
 	"parks.mapLabel": "Carte des parcours des parcs",
+	"parks.mapGroup": "{n, plural, one {# parc} other {# parcs}}",
+	"parks.mapGroupLabel": "{n, plural, one {# parc ici. Zoomez pour le voir} other {# parcs ici. Zoomez pour les voir}}",
 	"parks.markerLabel": "{park}, {count}",
 	"parks.aboutPark": "À propos de ce parc",
 	"parks.startHere": "Départ ici",

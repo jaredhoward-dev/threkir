@@ -2,7 +2,10 @@
 	// Every park on one map (decisions § 2612): a pill per park with its course
 	// count in a green circle and its name, a link to the park. The pills are
 	// real links in the DOM, so a keyboard, a screen reader and a crawler reach
-	// every park the map shows. The camera frames the parks shown until the
+	// every park the map shows whole. Where pills would overlap at the current
+	// zoom, one "N parks" button stands for the crowd and zooms in on it
+	// (groupOverlapping); parks with more courses are placed first, so they keep
+	// their own pill. The camera frames the parks shown until the
 	// reader moves the map; every settled view reports its bounds so the page
 	// can count the parks in it.
 	import { onDestroy, untrack } from 'svelte';
@@ -13,9 +16,15 @@
 	import { mapStyleUrlFromEnv as mapStyleUrl } from '#lib/routes/map-style.svelte.ts';
 	import { watchMapResize } from '#lib/routes/map_resize.ts';
 	import { hasAcceptedConsent } from '#lib/settings/consent.svelte.ts';
-	import type { LatLng, MapBounds } from '#lib/parks/park_map.ts';
+	import { groupOverlapping, type LatLng, type MapBounds } from '#lib/parks/park_map.ts';
 
 	const PUBLIC_MAPTILER_KEY = PUBLIC_MAPTILER_KEY_ENV ?? '';
+
+	/** The screen box one pill may take (its max-width, two lines of name). */
+	const PIN_BOX = { width: 224, height: 60 };
+	/** From this zoom up every park gets its own pill: a crowd's button zooms
+	 *  to here at most, so it always parts. */
+	const UNGROUP_ZOOM = 14;
 
 	export interface ParkPin {
 		id: string;
@@ -64,14 +73,47 @@
 		return a;
 	}
 
+	function groupButton(members: ParkPin[]): HTMLButtonElement {
+		const b = document.createElement('button');
+		b.type = 'button';
+		b.className = 'park-group';
+		b.dataset.testid = 'parks-map-group';
+		b.setAttribute('aria-label', m('parks.mapGroupLabel', { n: members.length }));
+		b.textContent = m('parks.mapGroup', { n: members.length });
+		b.addEventListener('click', () => {
+			if (!map) return;
+			readerMoved = true;
+			const lngs = members.map((p) => p.point.lng);
+			const lats = members.map((p) => p.point.lat);
+			map.fitBounds(
+				[
+					[Math.min(...lngs), Math.min(...lats)],
+					[Math.max(...lngs), Math.max(...lats)],
+				],
+				{ padding: 72, maxZoom: UNGROUP_ZOOM, duration: reducedMotion ? 0 : 600 },
+			);
+		});
+		return b;
+	}
+
 	function placePins() {
 		for (const marker of markers) marker.remove();
 		markers = [];
 		if (!map) return;
-		for (const p of parks) {
-			markers.push(
-				new maplibregl.Marker({ element: pill(p), anchor: 'bottom' }).setLngLat([p.point.lng, p.point.lat]).addTo(map),
-			);
+		const ordered = [...parks].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+		const groups =
+			map.getZoom() >= UNGROUP_ZOOM
+				? ordered.map((_, i) => [i])
+				: groupOverlapping(
+						ordered.map((p) => map!.project([p.point.lng, p.point.lat])),
+						PIN_BOX,
+					);
+		for (const g of groups) {
+			const members = g.map((i) => ordered[i]);
+			const element = members.length === 1 ? pill(members[0]) : groupButton(members);
+			const lng = members.reduce((sum, p) => sum + p.point.lng, 0) / members.length;
+			const lat = members.reduce((sum, p) => sum + p.point.lat, 0) / members.length;
+			markers.push(new maplibregl.Marker({ element, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(map));
 		}
 	}
 
@@ -131,6 +173,9 @@
 			if (!readerMoved) frame(false);
 		});
 		map.on('moveend', report);
+		map.on('zoomend', () => {
+			if (ready) placePins();
+		});
 		map.on('load', () => {
 			ready = true;
 			placePins();
@@ -231,6 +276,30 @@
 		background: var(--color-success-strong);
 		color: white;
 		font-variant-numeric: tabular-nums;
+	}
+	:global(.park-group) {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap-target-min);
+		box-sizing: border-box;
+		padding: var(--space-2xs) var(--space-md);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: var(--color-primary-light);
+		box-shadow: var(--shadow-md);
+		color: var(--color-text);
+		font: inherit;
+		font-size: 0.85rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	:global(.park-group:hover) {
+		border-color: var(--color-primary);
+	}
+	:global(.park-group:focus-visible) {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+		z-index: 2;
 	}
 	:global(.park-pin-name) {
 		overflow-wrap: anywhere;

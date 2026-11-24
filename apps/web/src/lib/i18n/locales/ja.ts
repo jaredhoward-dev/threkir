@@ -8067,6 +8067,8 @@ export const messages = {
 	"parks.showMap": "地図",
 	"parks.howItWorks": "公園コースのしくみ",
 	"parks.mapLabel": "公園コースの地図",
+	"parks.mapGroup": "{n, plural, other {公園#か所}}",
+	"parks.mapGroupLabel": "{n, plural, other {ここに公園が#か所あります。拡大して表示}}",
 	"parks.markerLabel": "{park}、{count}",
 	"parks.aboutPark": "この公園について",
 	"parks.startHere": "ここからスタート",

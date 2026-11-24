@@ -6129,6 +6129,8 @@
   "parksListButton": "{n, plural, one {Lista · {n} parque} other {Lista · {n} parques}}",
   "parksHowItWorks": "Cómo funcionan los recorridos de parques",
   "parksMapLabel": "Mapa de recorridos de parques",
+  "parksMapGroup": "{n, plural, one {{n} parque} other {{n} parques}}",
+  "parksMapGroupLabel": "{n, plural, one {{n} parque aquí. Acerca el mapa para verlo} other {{n} parques aquí. Acerca el mapa para verlos}}",
   "parksMapMarkerLabel": "{park}, {count}",
   "parksAboutPark": "Sobre este parque",
   "parksStartHere": "Salida aquí",

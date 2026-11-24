@@ -36,6 +36,8 @@ ParkListing _park({
   String agency = 'state',
   String kind = 'park',
   String? websiteUrl,
+  double? lat,
+  double? lng,
 }) => ParkListing(
   park: ParkRow(
     id: id,
@@ -47,6 +49,8 @@ ParkListing _park({
     countryCode: 'US',
     timezone: 'America/New_York',
     websiteUrl: websiteUrl,
+    centroidLat: lat,
+    centroidLng: lng,
     isActive: true,
     createdAt: DateTime.parse('2026-01-01T00:00:00Z'),
   ),
@@ -563,6 +567,38 @@ void main() {
       await tester.pumpWidget(_host(ParksScreen(api: api)));
       await _settle(tester);
       expect(find.byKey(const ValueKey('parks-map-pin-c1')), findsOneWidget);
+      await _unmount(tester);
+    });
+
+    testWidgets('parks whose pills would overlap share one "N parks" pill, '
+        'which zooms in until each park has its own', (tester) async {
+      phoneView(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(_host(ParksScreen(
+        api: _ParksApi(
+          parks: [
+            _park(id: 'n1', name: 'North Park', lat: 37.3, lng: -77.6),
+            _park(id: 'n2', name: 'South Park', lat: 37.29, lng: -77.61),
+          ],
+          courses: const [],
+        ),
+      )));
+      await _settle(tester);
+      // Framed at zoom 12 the two sit ~30 px apart: one pill for both.
+      expect(find.byKey(const ValueKey('parks-map-pin-n1')), findsNothing);
+      expect(find.byKey(const ValueKey('parks-map-pin-n2')), findsNothing);
+      expect(find.text('2 parks'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('2 parks here. Zoom in to see them'),
+        findsOneWidget,
+      );
+      expect(find.text('List · 2 parks'), findsOneWidget);
+      await tester.tap(find.text('2 parks'));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('parks-map-pin-n1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('parks-map-pin-n2')), findsOneWidget);
+      expect(find.text('2 parks'), findsNothing);
+      semantics.dispose();
       await _unmount(tester);
     });
 

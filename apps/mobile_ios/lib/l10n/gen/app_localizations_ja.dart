@@ -21423,6 +21423,26 @@ class AppLocalizationsJa extends AppLocalizations {
   String get parksMapLabel => '公園コースの地図';
 
   @override
+  String parksMapGroup(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '公園$nか所',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String parksMapGroupLabel(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'ここに公園が$nか所あります。拡大して表示',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String parksMapMarkerLabel(String park, String count) {
     return '$park、$count';
   }

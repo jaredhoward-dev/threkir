@@ -23012,6 +23012,28 @@ class AppLocalizationsEs extends AppLocalizations {
   String get parksMapLabel => 'Mapa de recorridos de parques';
 
   @override
+  String parksMapGroup(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques',
+      one: '$n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String parksMapGroupLabel(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques aquí. Acerca el mapa para verlos',
+      one: '$n parque aquí. Acerca el mapa para verlo',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String parksMapMarkerLabel(String park, String count) {
     return '$park, $count';
   }
