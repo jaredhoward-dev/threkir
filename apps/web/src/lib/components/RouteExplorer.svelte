@@ -8,6 +8,7 @@
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ExploreShell from '#lib/components/ExploreShell.svelte';
 	import ExploreMap from '#lib/components/ExploreMap.svelte';
+	import { EXPLORE_ROUTES_VIEW_KEY } from '#lib/routes/map_view_memory.ts';
 	import ExploreCard from '#lib/components/ExploreCard.svelte';
 	import ExploreListCard from '#lib/components/ExploreListCard.svelte';
 	import ExplorePicker from '#lib/components/ExplorePicker.svelte';
@@ -452,6 +453,7 @@
 			label={t('exploreMap.mapLabelRoutes')}
 			onmove={onMove}
 			onpick={onPick}
+			memoryKey={EXPLORE_ROUTES_VIEW_KEY}
 			testid="explore-routes-map"
 		/>
 	{/snippet}

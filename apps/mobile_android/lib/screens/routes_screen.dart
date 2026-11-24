@@ -30,6 +30,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../fab_clearance.dart';
 import '../local_route_store.dart';
 import '../local_run_store.dart';
+import '../map_view_memory.dart' show lastRunStart;
 import '../official_distance.dart';
 import '../preferences.dart';
 import '../route_file_import.dart';
@@ -760,6 +761,7 @@ class RoutesScreenState extends State<RoutesScreen> {
             chrome: chrome,
             mapButtons: _mapButtons(l10n),
             onBuildRoute: widget.apiClient == null ? null : _openBuilder,
+            lastRunStart: lastRunStart(widget.runStore),
           )
         else
           const SizedBox.shrink(),

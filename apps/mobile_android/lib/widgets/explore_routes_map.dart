@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../explore_viewport.dart' show LatLngPoint, ViewBounds;
 import '../heatmap_clustering.dart';
 import '../l10n/gen/app_localizations.dart';
+import '../map_view_memory.dart';
 import '../quiet_location.dart';
 import 'live_run_map.dart'
     show basemapTileLayer, basemapVoidColour, currentBasemapIsDark, currentTileUrl;
@@ -22,12 +23,18 @@ import 'map_attribution.dart';
 ///
 /// It refetches as the camera settles and reports what it read through
 /// [onPins]; the page filters them and hands back the ids to draw as
-/// [visibleIds]. It opens on the world and moves to the runner once a quiet
-/// fix arrives (never prompting), unless they have already moved the map.
+/// [visibleIds]. It opens on the best place it knows and moves to a better
+/// one as it arrives, until the runner moves the map (decisions § 2613): the
+/// world, then the start of their newest run ([lastRunStart]), then where
+/// they last left this map ([memory]), then a quiet fix of where they are
+/// (never prompting).
 /// A pin is a 48 dp target. A tap on one pin reports it through [onTap]; a
 /// tap on a small cluster of overlapping pins reports them all, for the
 /// page's "Which route?"; a big cluster zooms in. With a route selected its
 /// line is drawn, its start marked, and the other pins dim.
+/// The preferences key for where Routes → Explore was last left.
+const String kExploreRoutesViewKey = 'explore_routes_last_view';
+
 class ExploreRoutesMap extends StatefulWidget {
   const ExploreRoutesMap({
     super.key,
@@ -39,6 +46,8 @@ class ExploreRoutesMap extends StatefulWidget {
     this.selectedId,
     this.selectedLine = const [],
     this.quietFixes = quietPositionFixes,
+    this.lastRunStart,
+    this.memory = const MapViewMemory(kExploreRoutesViewKey),
   });
 
   final ApiClient? api;
@@ -63,6 +72,13 @@ class ExploreRoutesMap extends StatefulWidget {
   /// Test seam; production centres on [quietPositionFixes].
   final Stream<Position> Function() quietFixes;
 
+  /// Where the runner's newest run with a track started, if this phone holds
+  /// one.
+  final LatLng? lastRunStart;
+
+  /// Where this map was last left.
+  final MapViewMemory memory;
+
   /// A cluster this small opens as a list; a bigger one zooms in.
   static const pickClusterMax = 6;
 
@@ -82,9 +98,15 @@ class ExploreRoutesMapState extends State<ExploreRoutesMap> {
   List<cm.DiscoverableRoutePin> _pins = const [];
   Timer? _debounce;
   StreamSubscription<Position>? _fixes;
-  LatLng? _pendingFix;
+  ({LatLng at, double zoom, MapOpening by})? _pending;
+  late MapOpening _openedOn =
+      widget.lastRunStart == null ? MapOpening.world : MapOpening.lastRun;
   bool _ready = false;
   bool _moved = false;
+
+  /// Whether the remembered view has been read: until then a save would
+  /// overwrite it with the view the map opened on.
+  bool _recalled = false;
   int _generation = 0;
 
   /// The last read of the routes in view failed. Shown on the map with
@@ -94,18 +116,37 @@ class ExploreRoutesMapState extends State<ExploreRoutesMap> {
   /// Whether the camera has had a move since the runner last touched it.
   bool get moved => _moved;
 
+  /// A move the runner asked for through the page (Near me, a search pick,
+  /// Zoom out): the map stops moving itself to a better opening view.
+  void claim() => _moved = true;
+
   @override
   void initState() {
     super.initState();
-    _fixes = widget.quietFixes().listen((pos) {
-      final at = LatLng(pos.latitude, pos.longitude);
-      if (_moved || !mounted) return;
-      if (_ready) {
-        widget.controller.move(at, _openZoom);
-      } else {
-        _pendingFix = at;
-      }
-    });
+    _fixes = widget.quietFixes().listen((pos) => _open(
+        LatLng(pos.latitude, pos.longitude), _openZoom, MapOpening.here));
+    _recall();
+  }
+
+  Future<void> _recall() async {
+    final view = await widget.memory.load();
+    _recalled = true;
+    if (view == null || !mounted) return;
+    _open(LatLng(view.lat, view.lng), view.zoom, MapOpening.remembered);
+  }
+
+  /// Moves to [at] when [by] beats what the map opened on and the runner has
+  /// not moved it; held until the map is ready.
+  void _open(LatLng at, double zoom, MapOpening by) {
+    if (!mounted || !opensOn(_openedOn, by, touched: _moved)) return;
+    final pending = _pending;
+    if (pending != null && pending.by.index >= by.index) return;
+    if (!_ready) {
+      _pending = (at: at, zoom: zoom, by: by);
+      return;
+    }
+    _openedOn = by;
+    widget.controller.move(at, zoom);
   }
 
   @override
@@ -121,13 +162,18 @@ class ExploreRoutesMapState extends State<ExploreRoutesMap> {
   }
 
   Future<void> refresh() async {
-    final api = widget.api;
-    if (!_ready || api == null) return;
+    if (!_ready) return;
     final camera = widget.controller.camera;
     final b = camera.visibleBounds;
     final bounds =
         ViewBounds(west: b.west, south: b.south, east: b.east, north: b.north);
     final center = LatLngPoint(camera.center.latitude, camera.center.longitude);
+    if (_recalled) {
+      unawaited(widget.memory.save(
+          (lat: center.lat, lng: center.lng, zoom: camera.zoom)));
+    }
+    final api = widget.api;
+    if (api == null) return;
     final generation = ++_generation;
     try {
       final pins = await api.fetchDiscoverableRoutesInBbox(
@@ -174,13 +220,14 @@ class ExploreRoutesMapState extends State<ExploreRoutesMap> {
       mapController: widget.controller,
       options: MapOptions(
         backgroundColor: basemapVoidColour(darkBasemap: darkBasemap),
-        initialCenter: const LatLng(20, 0),
-        initialZoom: 2,
+        initialCenter: widget.lastRunStart ?? const LatLng(20, 0),
+        initialZoom: widget.lastRunStart == null ? 2 : _openZoom,
         minZoom: 2,
         onMapReady: () {
           _ready = true;
-          final fix = _pendingFix;
-          if (fix != null && !_moved) widget.controller.move(fix, _openZoom);
+          final pending = _pending;
+          _pending = null;
+          if (pending != null) _open(pending.at, pending.zoom, pending.by);
           refresh();
         },
         onPositionChanged: (_, hasGesture) {
