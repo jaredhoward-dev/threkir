@@ -1,5 +1,5 @@
 {
- "_comment": "Parks on a map (park_map pair): where a park's marker sits and which markers a map view holds, read by apps/web/src/lib/parks/park_map.test.ts and apps/mobile_android/test/park_map_test.dart. A null lat or lng stands for a missing or non-finite one. Points compare to 1e-9 degrees.",
+ "_comment": "Parks on a map (park_map pair): where a park's marker sits which markers a map view holds, and which markers' labels overlap on screen (overlapCases, screen pixels), read by apps/web/src/lib/parks/park_map.test.ts and apps/mobile_android/test/park_map_test.dart. A null lat or lng stands for a missing or non-finite one. Points compare to 1e-9 degrees.",
  "markerCases": [
   {
    "name": "a park with a centroid sits on it, whatever its courses",
@@ -74,6 +74,44 @@
    "bounds": { "south": -90.0, "west": -180.0, "north": 90.0, "east": 180.0 },
    "points": [null, { "lat": 0.0, "lng": 0.0 }],
    "inView": [false, true]
+  }
+ ],
+ "overlapCases": [
+  {
+   "name": "markers far apart each stand alone",
+   "box": { "width": 200, "height": 60 },
+   "points": [{ "x": 0, "y": 0 }, { "x": 300, "y": 0 }, { "x": 0, "y": 100 }],
+   "groups": [[0], [1], [2]]
+  },
+  {
+   "name": "a marker whose label box overlaps an earlier one joins it",
+   "box": { "width": 200, "height": 60 },
+   "points": [{ "x": 0, "y": 0 }, { "x": 150, "y": 40 }],
+   "groups": [[0, 1]]
+  },
+  {
+   "name": "boxes that only touch do not overlap",
+   "box": { "width": 200, "height": 60 },
+   "points": [{ "x": 0, "y": 0 }, { "x": 200, "y": 0 }, { "x": 0, "y": -60 }],
+   "groups": [[0], [1], [2]]
+  },
+  {
+   "name": "a marker joins the first group it overlaps, in the order given",
+   "box": { "width": 200, "height": 60 },
+   "points": [{ "x": 0, "y": 0 }, { "x": 500, "y": 0 }, { "x": 100, "y": 10 }, { "x": 420, "y": -30 }],
+   "groups": [[0, 2], [1, 3]]
+  },
+  {
+   "name": "overlap is read against each group's first marker, so a chain does not snowball",
+   "box": { "width": 200, "height": 60 },
+   "points": [{ "x": 0, "y": 0 }, { "x": 150, "y": 0 }, { "x": 300, "y": 0 }],
+   "groups": [[0, 1], [2]]
+  },
+  {
+   "name": "no markers, no groups",
+   "box": { "width": 200, "height": 60 },
+   "points": [],
+   "groups": []
   }
  ]
 }

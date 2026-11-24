@@ -3,15 +3,24 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { countInView, parkMarkerPoint, pointInView, type LatLng, type MapBounds } from './park_map';
+import {
+	countInView,
+	groupOverlapping,
+	parkMarkerPoint,
+	pointInView,
+	type LatLng,
+	type MapBounds,
+	type ScreenPoint,
+} from './park_map';
 
 // The TS reader of fixtures/park_map_cases.json, the case table the Dart twin
 // (apps/mobile_android/test/park_map_test.dart) reads too.
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
 type Pt = { lat: number | null; lng: number | null };
-const { markerCases, viewCases } = JSON.parse(readFileSync(join(REPO, 'fixtures', 'park_map_cases.json'), 'utf-8')) as {
+const { markerCases, viewCases, overlapCases } = JSON.parse(readFileSync(join(REPO, 'fixtures', 'park_map_cases.json'), 'utf-8')) as {
 	markerCases: { name: string; centroid: Pt | null; lines: Pt[][]; point: LatLng | null }[];
 	viewCases: { name: string; bounds: MapBounds; points: (LatLng | null)[]; inView: boolean[] }[];
+	overlapCases: { name: string; box: { width: number; height: number }; points: ScreenPoint[]; groups: number[][] }[];
 };
 
 for (const c of markerCases) {
@@ -34,5 +43,11 @@ for (const c of viewCases) {
 			c.inView,
 		);
 		assert.equal(countInView(c.points, c.bounds), c.inView.filter(Boolean).length);
+	});
+}
+
+for (const c of overlapCases) {
+	test(`overlap: ${c.name}`, () => {
+		assert.deepEqual(groupOverlapping(c.points, c.box), c.groups);
 	});
 }

@@ -63,3 +63,37 @@ bool pointInView(ParkMapPoint? point, ParkMapBounds view) {
 /// How many of the markers a map view holds.
 int countInView(Iterable<ParkMapPoint?> points, ParkMapBounds view) =>
     points.where((p) => pointInView(p, view)).length;
+
+typedef ParkScreenPoint = ({double x, double y});
+
+/// Which markers' labels would overlap on screen, as groups of indices into
+/// [points]. Every label is a [width] x [height] box anchored at its marker
+/// the same way, so two overlap when they are less than a box apart on both
+/// axes. Each marker, in the order given, joins the first group whose first
+/// marker it overlaps, else starts one, so a caller lists first the markers
+/// it most wants drawn whole, and a chain of near neighbours does not merge a
+/// whole region into one group.
+List<List<int>> groupOverlapping(
+  List<ParkScreenPoint> points, {
+  required double width,
+  required double height,
+}) {
+  final groups = <List<int>>[];
+  for (var i = 0; i < points.length; i++) {
+    final p = points[i];
+    List<int>? home;
+    for (final g in groups) {
+      final lead = points[g.first];
+      if ((p.x - lead.x).abs() < width && (p.y - lead.y).abs() < height) {
+        home = g;
+        break;
+      }
+    }
+    if (home != null) {
+      home.add(i);
+    } else {
+      groups.add([i]);
+    }
+  }
+  return groups;
+}
