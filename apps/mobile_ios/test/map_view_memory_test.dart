@@ -245,8 +245,10 @@ void main() {
       await pumpUntil(tester, () => state.recalled,
           describe: 'the remembered view to be read');
       map.move(const LatLng(35.0, 139.0), 11);
-      await pumpUntil(tester, () => memory.saved.isNotEmpty,
-          describe: 'the settled view to be saved');
+      // The save rides the 300 ms settle debounce, a fake-clock timer that
+      // pumpUntil never advances.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(memory.saved, isNotEmpty);
       final last = memory.saved.last;
       expect(last.lat, closeTo(35.0, 1e-6));
       expect(last.lng, closeTo(139.0, 1e-6));
