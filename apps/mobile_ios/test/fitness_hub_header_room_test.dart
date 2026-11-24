@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ui_kit/ui_kit.dart' show AppTheme, HubTabBody;
+import 'package:ui_kit/ui_kit.dart' show AppTheme, HubTabBody, MapFirstPage;
 
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/local_food_store.dart';
@@ -95,11 +95,18 @@ void main() {
 
   Future<void> openExplore(WidgetTester tester) async {
     await openTab(tester, 3);
-    final explore = find.byKey(const ValueKey('view-switch-segment-1'));
-    await tester.ensureVisible(explore);
-    await tester.tap(explore);
+    final menu = find.byKey(const ValueKey('routes-view-menu')).hitTestable();
+    await tester.ensureVisible(menu.first);
+    await tester.tap(menu.first);
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('routes-view-menu-routes')));
     await settle(tester);
   }
+
+  /// Explore's map: the page under the strip, with nothing stacked above it.
+  Rect exploreMap(WidgetTester tester) => tester.getRect(find.descendant(
+      of: find.byType(ExploreRoutesScreen),
+      matching: find.byType(MapFirstPage)));
 
   Rect strip(WidgetTester tester) => tester.getRect(find.byType(TabBar));
 
@@ -142,30 +149,22 @@ void main() {
       }
     });
 
-    // decisions § 2610 (owner choice, 2026-11-22): Explore's view switch,
-    // search row and chip line held 172 dp above the map; the search is an
-    // icon at the chip line's end now, so it holds 116.
-    testWidgets('Explore at rest gives the search row back: the search is an '
-        'icon beside Filters on the chip line', (tester) async {
+    // decisions § 2611: Explore's view row, chip line and search held 116 dp
+    // above a map strip; the map is the page now, its controls float on it.
+    testWidgets('Explore is all map under the strip, its view menu, Search and '
+        'Filters floating on its top edge', (tester) async {
       await pumpPhone(tester);
       await openExplore(tester);
       expect(find.byType(TextField), findsNothing);
-      final icon = find.byKey(const Key('filter-bar-search'));
-      final filters = find.byKey(const Key('filter-bar-filters'));
-      final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
-      expect(line.contains(tester.getCenter(icon)), isTrue);
-      expect(tester.getCenter(filters).dy,
-          moreOrLessEquals(tester.getCenter(icon).dy));
-      // Over a map the row lies on the page, so the map starts where the
-      // row ends.
-      final row = find.descendant(
-          of: find.byType(ExploreRoutesScreen),
-          matching: find.byKey(const Key('hub-tab-controls')));
-      // 172 dp with the search a row of its own. The test font is wider
-      // than a device's, so the chips may wrap here; on a phone they share
-      // one row (decisions § 2610's renders), and the search row is gone
-      // either way.
-      expect(tester.getRect(row).bottom - strip(tester).bottom, lessThan(172));
+      expect(exploreMap(tester).top, strip(tester).bottom,
+          reason: 'no control row between the strip and the map');
+      final map = exploreMap(tester);
+      for (final key in ['routes-view-menu', 'explore-search', 'explore-filters']) {
+        final r = tester.getRect(
+            find.byKey(ValueKey(key)).hitTestable().first);
+        expect(map.contains(r.center), isTrue, reason: key);
+        expect(r.top - map.top, lessThan(64), reason: '$key on the top edge');
+      }
     });
 
     // Runs' search, filters and kind chips held 116 dp above a list on the
@@ -210,12 +209,12 @@ void main() {
     expect(strip(tester).top, kToolbarHeight,
         reason: 'the map got the title row\'s room');
     expectNoOverflow(tester, 'Explore, title collapsed');
-    // The chips and the two pinned icons share one row at 2x on 320 dp.
-    final line = tester.getRect(find.byKey(const Key('filter-bar-chips')));
-    for (final key in ['filter-bar-search', 'filter-bar-filters']) {
-      final r = tester.getRect(find.byKey(Key(key)));
-      expect(line.contains(r.center), isTrue, reason: key);
+    expect(exploreMap(tester).top, strip(tester).bottom);
+    // The menu, Search and Filters share the map's top edge at 2x on 320 dp.
+    for (final key in ['routes-view-menu', 'explore-search', 'explore-filters']) {
+      final r = tester.getRect(find.byKey(ValueKey(key)).hitTestable().first);
       expect(r.right, lessThanOrEqualTo(kWorstCasePhone.width), reason: key);
+      expect(r.left, greaterThanOrEqualTo(0), reason: key);
     }
     expect(find.byType(TextField), findsNothing);
 

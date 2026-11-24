@@ -20,10 +20,10 @@
 		"rclt"
 	],
 	"subset": {
-		"bytes": 75268,
-		"sha256": "180b2d9e8e505ef8384b61585494853258a800ebac38f76f4d0cf2ffc973f35b",
-		"glyphs": 338,
-		"ligatures": 455
+		"bytes": 75260,
+		"sha256": "df1fc0c3f7a63a68189791db98b300578951ee69ea43cd4edfca8c2b417857a0",
+		"glyphs": 341,
+		"ligatures": 458
 	},
 	"icons": [
 		"10k",
@@ -63,6 +63,7 @@
 		"block",
 		"bookmark",
 		"bookmark_add",
+		"bookmarks",
 		"browse",
 		"bubble",
 		"build",
@@ -131,7 +132,6 @@
 		"emoji_events",
 		"equal",
 		"error",
-		"error_outline",
 		"event",
 		"event_available",
 		"event_busy",
@@ -196,7 +196,6 @@
 		"list",
 		"list_alt",
 		"local_fire_department",
-		"location_off",
 		"location_searching",
 		"lock",
 		"lock_clock",
@@ -246,6 +245,7 @@
 		"person",
 		"person_add",
 		"person_off",
+		"person_pin_circle",
 		"person_remove",
 		"person_search",
 		"phone_android",
@@ -306,6 +306,7 @@
 		"sleep",
 		"smartphone",
 		"sms",
+		"sort",
 		"source",
 		"south",
 		"sports",
@@ -376,6 +377,7 @@
 		"woman",
 		"work",
 		"workspace_premium",
+		"zoom_out",
 		"zoom_out_map"
 	]
 }

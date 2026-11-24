@@ -39,6 +39,10 @@ const _barsLeft = <String, ({int count, String why})>{
     count: 1,
     why: 'a MapFirstPage, which takes its bar as a slot over the map',
   ),
+  'lib/screens/parks_screen.dart': (
+    count: 1,
+    why: 'a MapFirstPage, which takes its bar as a slot over the map',
+  ),
   'lib/screens/privacy_zones_screen.dart': (
     count: 1,
     why: 'a MapFirstPage, which takes its bar as a slot over the map',

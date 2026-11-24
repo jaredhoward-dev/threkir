@@ -120,15 +120,9 @@ test.describe('/routes — distance-filter labels honour user unit pref', () => 
 
 		await page.goto('/routes?tab=explore');
 
-		// The Explore tab has its own Distance dropdown — find it by
-		// the surrounding label rather than aria-label since the
-		// component uses a different markup.
-		const dropdowns = page.locator('select');
-		// One of the selects holds the distance options. Locate by
-		// the presence of the "Any distance" option.
-		const distSelect = dropdowns.filter({
-			has: page.locator('option', { hasText: 'Any distance' })
-		}).first();
+		// Explore's distance choice is in its Filters sheet (decisions § 2611).
+		await page.getByTestId('explore-filters-open').click();
+		const distSelect = page.getByTestId('explore-filter-distance');
 		await expect(distSelect).toBeVisible({ timeout: 10_000 });
 		await expect(distSelect).toContainText(/Under 3 mi/);
 		await expect(distSelect).toContainText(/3-6 mi/);

@@ -13,6 +13,7 @@ import '../lib/geocoding.dart';
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/race_service.dart';
 import '../lib/screens/park_courses_screen.dart';
+import '../lib/screens/parks_screen.dart';
 import '../lib/screens/races_screen.dart';
 import '../lib/training.dart' show toIsoDate;
 import '../lib/widgets/help_button.dart';
@@ -809,10 +810,18 @@ void main() {
   });
 
   group('All park courses', () {
+    // The index is a map; its List button opens the parks as a list, which
+    // shares the map's search (decisions § 2612).
     Future<void> openIndex(WidgetTester tester, {String query = ''}) async {
       tallView(tester);
       await tester.pumpWidget(
           _app(ParksScreen(api: _ParksApi(), initialQuery: query)));
+      await pumpUntil(
+        tester,
+        () => find.byKey(const Key('parks-list-button')).evaluate().isNotEmpty,
+        describe: 'the parks map',
+      );
+      await tester.tap(find.byKey(const Key('parks-list-button')));
       await pumpUntil(
         tester,
         () => find
@@ -833,13 +842,13 @@ void main() {
       expect(find.byKey(const ValueKey('parks-park-p1')), findsOneWidget);
       expect(find.byKey(const ValueKey('parks-park-p2')), findsOneWidget);
 
-      await tester.enterText(find.byKey(const Key('parks-search')), 'near loop');
+      await tester.enterText(find.byKey(const Key('parks-list-search')), 'near loop');
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
       expect(find.byKey(const ValueKey('parks-park-p2')), findsOneWidget);
       expect(find.byKey(const ValueKey('parks-park-p1')), findsNothing);
 
-      await tester.enterText(find.byKey(const Key('parks-search')), 'zzz');
+      await tester.enterText(find.byKey(const Key('parks-list-search')), 'zzz');
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump();
       final none = find.byKey(const Key('parks-no-match'));
@@ -857,7 +866,13 @@ void main() {
       await openIndex(tester, query: 'pocahontas');
       expect(find.byKey(const ValueKey('parks-park-p1')), findsOneWidget);
       expect(find.byKey(const ValueKey('parks-park-p2')), findsNothing);
-      expect(find.text('pocahontas'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('parks-list-search')),
+          matching: find.text('pocahontas'),
+        ),
+        findsOneWidget,
+      );
     });
 
     worstCaseTestWidgets('the index with its search', (tester, locale) async {
@@ -865,6 +880,12 @@ void main() {
         locale: locale,
         home: ParksScreen(api: _ParksApi(), initialQuery: 'zzz'),
       ));
+      await pumpUntil(
+        tester,
+        () => find.byKey(const Key('parks-list-button')).evaluate().isNotEmpty,
+        describe: 'the parks map',
+      );
+      await tester.tap(find.byKey(const Key('parks-list-button')));
       await pumpUntil(
         tester,
         () => find.byKey(const Key('parks-no-match')).evaluate().isNotEmpty,

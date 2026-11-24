@@ -88,6 +88,11 @@ const _register = <String, int>{
   // cue: a selecting row's leading slot forks `check_circle` /
   // `radio_button_unchecked` and the card carries `Semantics(selected:)`.
   '../../packages/ui_kit/lib/src/widgets/list_card.dart': 1,
+  // The unpicked segment lines while one is picked, `primary@0.35` drawn on
+  // basemap TILES, so no ratio is computable at all (the privacy-zone disc's
+  // case). Fading them is the point; the picked line is full `tertiary` at
+  // 6 px against their 3 px, and the floating card names it.
+  'lib/widgets/explore_segments_map.dart': 1,
   // `surface@0.95` over the PAGE, not a map — the only one of the family that
   // is not an overlay, and in dark it is a lighter fill on a darker page
   // (1.163:1), so its `dividerColor` border is what separates it.

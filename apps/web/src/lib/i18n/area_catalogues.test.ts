@@ -103,8 +103,8 @@ test('keys several areas share are grouped by exactly who renders them, past a s
 		['clubRole.admin', [one('n', '/gym'), one('o', '/plans')]],
 		['gym.only', [one('p', '/gym')]],
 		['fold.narrow', [one('q', '/routes/[id]'), one('r', '/runs/[id]')]],
-		['fold.wide', [one('s', '/routes/[id]'), one('s', '/runs/[id]'), one('s', '/segments/[id]')]],
-		['fold.far', [one('t', '/segments/[id]')]],
+		['fold.wide', [one('s', '/routes/[id]'), one('s', '/runs/[id]'), one('s', '/events/[id]')]],
+		['fold.far', [one('t', '/events/[id]')]],
 	]);
 	const keys = [...fixture.keys()];
 	// 600 bytes a key against the 1024 threshold: one key is never a group.
@@ -137,16 +137,16 @@ test('keys several areas share are grouped by exactly who renders them, past a s
 		// bytes and is a group; the lone segment has no superset one unit wider
 		// and folds into that group instead. gym.a, gym.b and gym.small have no
 		// superset at all, so they stay in core.
-		'fold.narrow': '_segments~routes~runs',
-		'fold.wide': '_segments~routes~runs',
-		'fold.far': '_segments~routes~runs',
+		'fold.narrow': '_events~routes~runs',
+		'fold.wide': '_events~routes~runs',
+		'fold.far': '_events~routes~runs',
 	});
 	assert.deepEqual(table, {
 		'_history~gym': ['/gym', '/history'],
-		'_segments~routes~runs': ['/routes', '/runs', '/segments'],
+		'_events~routes~runs': ['/events', '/routes', '/runs', '/segments'],
 		_sessions: ['/sessions'],
 	});
-	assert.deepEqual(partsForRoute('/segments/[id]', table), ['_segments~routes~runs']);
+	assert.deepEqual(partsForRoute('/events/[id]', table), ['_events~routes~runs']);
 	assert.deepEqual(partsForRoute('/gym/[id]', table), ['gym', '_history~gym']);
 	assert.deepEqual(partsForRoute('/history', table), ['_history~gym']);
 	assert.deepEqual(partsForRoute('/sessions/[id]', table), ['_sessions']);

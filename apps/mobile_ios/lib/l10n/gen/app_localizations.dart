@@ -35853,6 +35853,48 @@ abstract class AppLocalizations {
   /// **'{n, plural, one {Map of the park\'s course} other {Map of the park\'s {n} courses}}'**
   String parksMapParkLabel(int n);
 
+  /// Park courses map (decisions § 2612): the button under the parks map that opens them as a list; n is how many parks the map shows. Web key parks.listButton.
+  ///
+  /// In en, this message translates to:
+  /// **'{n, plural, one {List · {n} park} other {List · {n} parks}}'**
+  String parksListButton(int n);
+
+  /// Park courses map (decisions § 2612): the info button in the top bar and the title of the sheet holding the intro. Web key parks.howItWorks.
+  ///
+  /// In en, this message translates to:
+  /// **'How park courses work'**
+  String get parksHowItWorks;
+
+  /// Screen-reader label of the parks map (decisions § 2612). Web key parks.mapLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Map of park courses'**
+  String get parksMapLabel;
+
+  /// Screen-reader name of a park's pin on the parks map: the park's name and its course count (parksCourseCount, already formatted). Web key parks.markerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{park}, {count}'**
+  String parksMapMarkerLabel(String park, String count);
+
+  /// Park page (decisions § 2612): the folded row at the end holding the description, website and notices. Web key parks.aboutPark.
+  ///
+  /// In en, this message translates to:
+  /// **'About this park'**
+  String get parksAboutPark;
+
+  /// Park page map (decisions § 2612): the label at a picked course's start. Web key parks.startHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Start here'**
+  String get parksStartHere;
+
+  /// Park page (decisions § 2612): the picked course's button that opens its season board and course page. Web key parks.board.
+  ///
+  /// In en, this message translates to:
+  /// **'Board'**
+  String get parksBoard;
+
   /// Accessible label of the event course map showing start and finish timing lines (#1305)
   ///
   /// In en, this message translates to:
@@ -37934,6 +37976,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Checkpoint {number}, passed'**
   String runCourseCheckpointPassedLabel(int number);
+
+  /// Accessible name of the Routes view menu button; {view} is the view showing.
+  ///
+  /// In en, this message translates to:
+  /// **'{view}, change view'**
+  String exploreMapViewMenuLabel(String view);
+
+  /// Routes view menu option: the runner's own and saved routes.
+  ///
+  /// In en, this message translates to:
+  /// **'My routes'**
+  String get exploreMapViewMine;
+
+  /// Routes view menu option: public routes on a map.
+  ///
+  /// In en, this message translates to:
+  /// **'Explore routes'**
+  String get exploreMapViewRoutes;
+
+  /// Routes view menu option: the segment catalogue on a map.
+  ///
+  /// In en, this message translates to:
+  /// **'Explore segments'**
+  String get exploreMapViewSegments;
+
+  /// Back button on the Routes on the map list page.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to the map'**
+  String get exploreMapBackToMap;
+
+  /// Pill on the Explore map opening the list of the routes in view.
+  ///
+  /// In en, this message translates to:
+  /// **'List · {count, plural, one {{count} route} other {{count} routes}}'**
+  String exploreMapListRoutes(int count);
+
+  /// Pill on the Explore segments map opening the list of the segments in view.
+  ///
+  /// In en, this message translates to:
+  /// **'List · {count, plural, one {{count} segment} other {{count} segments}}'**
+  String exploreMapListSegments(int count);
+
+  /// Title of the list of the routes in the map's view.
+  ///
+  /// In en, this message translates to:
+  /// **'Routes on the map'**
+  String get exploreMapListRoutesTitle;
+
+  /// Title of the list of the segments in the map's view.
+  ///
+  /// In en, this message translates to:
+  /// **'Segments on the map'**
+  String get exploreMapListSegmentsTitle;
+
+  /// Search field on the on-the-map list page; narrows the list by name.
+  ///
+  /// In en, this message translates to:
+  /// **'Search this list'**
+  String get exploreMapListSearchLabel;
+
+  /// Label of the sort control on the on-the-map list page.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort'**
+  String get exploreMapSortLabel;
+
+  /// Sort option: closest to the runner first.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearest first'**
+  String get exploreMapSortNearest;
+
+  /// Sort option: alphabetical by name.
+  ///
+  /// In en, this message translates to:
+  /// **'A–Z'**
+  String get exploreMapSortName;
+
+  /// Line under a route's name when an official organiser published it.
+  ///
+  /// In en, this message translates to:
+  /// **'Official course'**
+  String get exploreMapOfficialCourse;
+
+  /// Title of the list shown when a map tap hits several routes.
+  ///
+  /// In en, this message translates to:
+  /// **'Which route?'**
+  String get exploreMapWhichRoute;
+
+  /// Title of the list shown when a map tap hits several segments.
+  ///
+  /// In en, this message translates to:
+  /// **'Which segment?'**
+  String get exploreMapWhichSegment;
+
+  /// Shown over the Explore map when no route is in view.
+  ///
+  /// In en, this message translates to:
+  /// **'No routes here'**
+  String get exploreMapEmptyRoutes;
+
+  /// Explains how to find routes when none is in view.
+  ///
+  /// In en, this message translates to:
+  /// **'Move the map or zoom out to see more.'**
+  String get exploreMapEmptyRoutesHint;
+
+  /// Shown over the Explore segments map when no segment is in view.
+  ///
+  /// In en, this message translates to:
+  /// **'No segments here'**
+  String get exploreMapEmptySegments;
+
+  /// Button zooming the map out from an empty view.
+  ///
+  /// In en, this message translates to:
+  /// **'Zoom out'**
+  String get exploreMapZoomOut;
+
+  /// Button moving the map to the nearest route or segment; {name} is its name.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearest: {name}'**
+  String exploreMapNearest(String name);
+
+  /// Shown on the Explore map when the routes in view could not be read.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the routes on the map.'**
+  String get exploreMapLoadFailed;
+
+  /// Card button opening a route's or segment's page.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get exploreMapDetails;
+
+  /// Card button loading the route into the recorder without starting it.
+  ///
+  /// In en, this message translates to:
+  /// **'Run this route'**
+  String get exploreMapRunThisRoute;
+
+  /// Banner when Run this route could not load the route line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this route. Check your connection and try again.'**
+  String get exploreMapRunFailed;
+
+  /// Banner when Run this route is pressed while a run is already recording.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish the run you\'re recording first, then load this route.'**
+  String get exploreMapRunRecording;
 }
 
 class _AppLocalizationsDelegate

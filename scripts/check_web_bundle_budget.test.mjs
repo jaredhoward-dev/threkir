@@ -153,11 +153,13 @@ test('twenty more languages move no budget, where the retired total ceiling fail
 // for, is that a dep is charged to code alone and a locale is never blamed.
 test('a rogue dep past the code ceiling trips the code budget alone', () => {
 	const over = MAX_CODE_KB - 2057 + 2;
+	// Split into chunks under the largest-chunk ceiling, so only the total trips.
+	const pieces = Math.ceil(over / MAX_LARGEST_CHUNK_KB) + 1;
 	const rogue = fixture({
-		extraCode: [
-			{ path: '_app/immutable/chunks/rogue-dep.js', kb: Math.floor(over / 2) },
-			{ path: '_app/immutable/chunks/rogue-dep-2.js', kb: Math.ceil(over / 2) },
-		],
+		extraCode: Array.from({ length: pieces }, (_, i) => ({
+			path: `_app/immutable/chunks/rogue-dep-${i}.js`,
+			kb: Math.floor(over / pieces) + (i < over % pieces ? 1 : 0),
+		})),
 	});
 
 	const { errors } = checkBudgets(rogue);
@@ -376,7 +378,7 @@ test('the summary states the catalogue total without gating on it', () => {
 });
 
 test('the shipped ceilings are the ones this suite reasons about', () => {
-	assert.equal(MAX_CODE_KB, 2731);
+	assert.equal(MAX_CODE_KB, 2758);
 	assert.equal(MAX_CORE_CATALOGUE_KB, 15);
 	assert.equal(MAX_AREA_CATALOGUE_KB, 14);
 	assert.equal(MAX_LARGEST_CHUNK_KB, 350);

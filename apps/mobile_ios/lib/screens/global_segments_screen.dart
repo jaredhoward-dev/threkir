@@ -1,24 +1,23 @@
 import 'package:api_client/api_client.dart';
 import 'package:core_models/core_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' show CameraFit, LatLngBounds, MapController;
+import 'package:latlong2/latlong.dart';
 import 'package:ui_kit/ui_kit.dart'
     show
-        ActiveFilter,
         AppInsets,
-        AppSearchField,
         AppSemanticColors,
         AppSpace,
-        AsyncView,
         DetailHero,
         DetailMeta,
         DetailPage,
         EmptyState,
         ListCard,
-        FilterBar,
         HubTabBody,
         IdentityAvatar,
         ListSkeleton,
-        LoadingState,
+        MapControlButton,
+        MapFirstPage,
         SkeletonBlock,
         StatGrid,
         StatTile,
@@ -26,6 +25,7 @@ import 'package:ui_kit/ui_kit.dart'
 
 import '../backend_timeout.dart';
 import '../catalogue_browse.dart';
+import '../explore_viewport.dart';
 import '../fab_clearance.dart';
 import '../fitness_surface_requests.dart';
 import '../l10n/gen/app_localizations.dart';
@@ -34,6 +34,8 @@ import '../race_service.dart';
 import '../route_surface_label.dart';
 import '../routes_views.dart';
 import '../widgets/error_state.dart';
+import '../widgets/explore_map_chrome.dart';
+import '../widgets/explore_segments_map.dart';
 import '../widgets/help_button.dart';
 import 'park_courses_screen.dart';
 import 'races_screen.dart';
@@ -44,23 +46,55 @@ import '../widgets/loading_skeletons.dart';
 import '../widgets/old_match_note.dart';
 import '../widgets/segments_panel.dart' show SegmentTierFilters;
 
-/// Browse list for the curated famous-segment catalogue (decisions §233).
-/// Mobile mirror of web `/segments`: search with accent folding, region and
-/// surface filters, four sorts — all shaped by the `catalogue_browse.dart`
-/// parity pair over the whole fetched catalogue, so a keystroke costs no
-/// round-trip.
+/// A catalogue segment on the Explore segments map: its start as an
+/// [ExplorePin], with what its card and list row show.
+class ExploreSegmentPin extends ExplorePin {
+  const ExploreSegmentPin({
+    required super.id,
+    required super.name,
+    required super.lat,
+    required super.lng,
+    super.distanceM,
+    super.surface,
+    this.region,
+    this.elevationM,
+    this.line = const [],
+  });
+
+  final String? region;
+  final double? elevationM;
+  final List<Waypoint> line;
+}
+
+/// The curated line of a catalogue row, leaving out any point that does not
+/// parse.
+List<Waypoint> segmentLine(GlobalSegmentRow row) {
+  final out = <Waypoint>[];
+  for (final w in row.waypoints) {
+    try {
+      final p = Waypoint.fromJson(w);
+      if (p.lat.isFinite && p.lng.isFinite) out.add(p);
+    } catch (_) {
+      continue;
+    }
+  }
+  return out;
+}
+
+/// The curated famous-segment catalogue (decisions § 233) on a map:
+/// Routes → Explore segments (decisions § 2611). Every segment is drawn with
+/// its start pin; a tapped one opens a card; the segments in view are a list
+/// of their own, searched with accent folding and filtered by region and
+/// surface through the `catalogue_browse.dart` parity pair over the whole
+/// fetched catalogue, so neither costs a round-trip.
 ///
-/// The catalogue is world-readable, so this screen works signed out — unlike
-/// the leaderboard on [GlobalSegmentDetailScreen].
-///
-/// It is Routes → Explore on its Segments chip (issue #1374, owner decision
-/// 1), which hands it [chrome]; it was a Fitness tab of its own before.
-/// Mounted on its own, where no shell can select that view, it is a page
-/// titled Segments.
+/// The catalogue is world-readable, so this screen works signed out, unlike
+/// the leaderboard on [GlobalSegmentDetailScreen]. Mounted on its own, where
+/// no shell can select the view, it is a page titled Segments.
 class GlobalSegmentsScreen extends StatefulWidget {
   final ApiClient? api;
 
-  /// The Routes tab's view row and Explore chips. Null on its own.
+  /// The Routes tab's view menu. Null on its own.
   final RoutesExploreChrome? chrome;
 
   const GlobalSegmentsScreen({super.key, this.api, this.chrome});
@@ -70,15 +104,19 @@ class GlobalSegmentsScreen extends StatefulWidget {
 }
 
 class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
-  List<GlobalSegmentRow> _segments = const [];
+  final _map = MapController();
+  final _changes = ValueNotifier<int>(0);
+
+  List<ExploreSegmentPin> _pins = const [];
+  Map<String, List<LatLng>> _lines = const {};
   bool _loading = true;
   bool _error = false;
 
-  String _query = '';
   String? _region;
   String? _surface;
-  CatalogueSort _sort = CatalogueSort.name;
-  final _search = TextEditingController();
+  ViewBounds? _bounds;
+  LatLngPoint? _center;
+  String? _selectedId;
 
   @override
   void initState() {
@@ -88,8 +126,14 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
 
   @override
   void dispose() {
-    _search.dispose();
+    _map.dispose();
+    _changes.dispose();
     super.dispose();
+  }
+
+  void _update(VoidCallback fn) {
+    setState(fn);
+    _changes.value++;
   }
 
   Future<void> _load() async {
@@ -109,8 +153,27 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
       final segments =
           await api.fetchGlobalSegments().timeout(kBackendLoadTimeout);
       if (!mounted) return;
-      setState(() {
-        _segments = segments;
+      final pins = <ExploreSegmentPin>[];
+      final lines = <String, List<LatLng>>{};
+      for (final s in segments) {
+        final line = segmentLine(s);
+        if (line.isEmpty) continue;
+        pins.add(ExploreSegmentPin(
+          id: s.id,
+          name: s.name,
+          lat: line.first.lat,
+          lng: line.first.lng,
+          distanceM: s.distanceM,
+          surface: s.surface,
+          region: s.region,
+          elevationM: s.elevationM,
+          line: line,
+        ));
+        lines[s.id] = [for (final w in line) LatLng(w.lat, w.lng)];
+      }
+      _update(() {
+        _pins = pins;
+        _lines = lines;
         _loading = false;
       });
     } catch (_) {
@@ -125,14 +188,100 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
     }
   }
 
-  void _reset() {
-    _search.clear();
-    setState(() {
-      _query = '';
-      _region = null;
-      _surface = null;
-      _sort = CatalogueSort.name;
-    });
+  List<CatalogueSegment> _catalogueOf(Iterable<ExploreSegmentPin> pins) => [
+        for (final p in pins)
+          CatalogueSegment(
+            id: p.id,
+            name: p.name,
+            surface: p.surface,
+            region: p.region,
+            distanceM: p.distanceM,
+            elevationM: p.elevationM,
+          ),
+      ];
+
+  /// The catalogue helpers answer in their own row type; this maps that
+  /// answer back onto the pins, in its order.
+  List<ExploreSegmentPin> _byIds(Iterable<CatalogueSegment> rows) {
+    final byId = {for (final p in _pins) p.id: p};
+    return [
+      for (final r in rows) ?byId[r.id],
+    ];
+  }
+
+  List<ExploreSegmentPin> get _filtered => _byIds(filterCatalogue(
+        _catalogueOf(_pins),
+        region: _region,
+        surface: _surface,
+      ));
+
+  List<ExploreSegmentPin> get _inView {
+    final bounds = _bounds;
+    final filtered = _filtered;
+    if (bounds == null) return filtered;
+    return [for (final p in filtered) if (inBounds(p.lat, p.lng, bounds)) p];
+  }
+
+  ExploreSegmentPin? get _selected {
+    for (final p in _pins) {
+      if (p.id == _selectedId) return p;
+    }
+    return null;
+  }
+
+  int get _filterCount => (_region != null ? 1 : 0) + (_surface != null ? 1 : 0);
+
+  void _reset() => _update(() {
+        _region = null;
+        _surface = null;
+      });
+
+  void _onMove(ViewBounds bounds, LatLngPoint center) => _update(() {
+        _bounds = bounds;
+        _center = center;
+      });
+
+  Future<void> _onTap(List<ExplorePin> pins) async {
+    if (pins.length == 1) {
+      _select(pins.first.id);
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
+    final byId = {for (final p in _pins) p.id: p};
+    final id = await showExplorePicker(
+      context,
+      title: l10n.exploreMapWhichSegment,
+      items: [
+        for (final p in pins)
+          if (byId[p.id] case final s?)
+            (id: s.id, name: s.name, stats: _stats(l10n, s)),
+      ],
+    );
+    if (id != null && mounted) _select(id);
+  }
+
+  void _select(String id, {bool frame = false}) {
+    _update(() => _selectedId = id);
+    final line = _lines[id];
+    if (!frame || line == null || line.isEmpty) return;
+    try {
+      _map.fitCamera(CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(line),
+        padding: const EdgeInsets.fromLTRB(40, 96, 40, 260),
+        maxZoom: 16,
+      ));
+    } catch (e) {
+      debugPrint('explore segments map not ready to frame: $e');
+    }
+  }
+
+  void _zoomOut() {
+    try {
+      final camera = _map.camera;
+      _map.move(camera.center, (camera.zoom - 2).clamp(2, 18).toDouble());
+    } catch (e) {
+      debugPrint('explore segments map not ready to zoom: $e');
+    }
   }
 
   void _open(String segmentId) {
@@ -164,106 +313,21 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
         ),
       );
 
-  List<CatalogueSegment> get _catalogue => [
-        for (final s in _segments)
-          CatalogueSegment(
-            id: s.id,
-            name: s.name,
-            surface: s.surface,
-            region: s.region,
-            distanceM: s.distanceM,
-            elevationM: s.elevationM,
-          ),
-      ];
+  /// "1.20 km · 85 m ↑ · Road", each fact glued so a raised text scale wraps
+  /// between facts, never inside one.
+  String _stats(AppLocalizations l10n, ExploreSegmentPin p) {
+    String glued(String s) => s.replaceAll(' ', '\u00A0');
+    final climb = p.elevationM;
+    return [
+      glued(formatDistanceForPref(p.distanceM)),
+      if (climb != null && climb > 0) glued('${formatElevationForPref(climb)} ↑'),
+      routeSurfaceLabel(l10n, p.surface),
+    ].join(' · ');
+  }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _openFilters(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final catalogue = _catalogue;
-    final bar = _filterBar(l10n, catalogue).withTrailing([
-      IconButton(
-        key: const Key('segments-parks-link'),
-        tooltip: l10n.parksBrowseLink,
-        icon: const Icon(Icons.park_outlined),
-        onPressed: _openParks,
-      ),
-    ]);
-    return HubTabBody(
-      // The chip's own name: "Famous segments" under a tab reading "Segments"
-      // was two names for one place (issue #1374 report 2).
-      title: l10n.runSurfaceTabSegments,
-      filters: widget.chrome?.above(bar) ?? bar,
-      onRefresh: _load,
-      body: AsyncView<List<CatalogueSegment>>(
-        loading: _loading,
-        error: _error ? true : null,
-        data: catalogue,
-        isEmpty: (c) => c.isEmpty,
-        loadingState: LoadingState.list(label: l10n.segmentsPanelLoading),
-        errorBuilder: (_, _) => AppErrorState(
-          message: l10n.segmentCatalogueLoadFailed,
-          onRetry: _load,
-        ),
-        empty: EmptyState(
-          icon: Icons.terrain,
-          title: l10n.segmentCatalogueEmpty,
-          ctaLabel: l10n.parksBrowseLink,
-          ctaIcon: Icons.park_outlined,
-          onCta: _openParks,
-        ),
-        builder: (context, c) => _buildCatalogue(context, l10n, c),
-      ),
-    );
-  }
-
-  /// Search, then Filters for region, surface and sort, whose non-default
-  /// values show as removable chips, after the Routes · Segments chips when
-  /// the Routes tab hosts this. A one-value choice filters nothing, so a
-  /// group with one value is left out of the sheet. With nothing loaded there
-  /// is nothing to search or filter, and only the chips stay.
-  FilterBar _filterBar(AppLocalizations l10n, List<CatalogueSegment> catalogue) {
-    if (catalogue.isEmpty) {
-      return FilterBar(
-        key: const Key('segments-filter-bar'),
-        chips: [...?widget.chrome?.chips],
-      );
-    }
-    ActiveFilter active(String label, VoidCallback onRemove) => ActiveFilter(
-          label: label,
-          onRemove: onRemove,
-          removeTooltip: l10n.filterBarRemoveFilter(label),
-        );
-    final filters = [
-      if (_region case final r?) active(r, () => setState(() => _region = null)),
-      if (_surface case final s?)
-        active(routeSurfaceLabel(l10n, s), () => setState(() => _surface = null)),
-      if (_sort != CatalogueSort.name)
-        active(_sortLabel(l10n, _sort),
-            () => setState(() => _sort = CatalogueSort.name)),
-    ];
-    return FilterBar(
-      key: const Key('segments-filter-bar'),
-      // As Explore → Routes does, so the two Explore views read alike
-      // (decisions § 2610).
-      collapsibleSearch: widget.chrome != null,
-      search: AppSearchField(
-        controller: _search,
-        hint: l10n.segmentCatalogueSearchHint,
-        clearTooltip: l10n.commonClearSearch,
-        onChanged: (v) => setState(() => _query = v),
-      ),
-      chips: [...?widget.chrome?.chips],
-      activeFilters: filters,
-      filtersLabel: l10n.filterBarFilters,
-      filtersSemanticLabel:
-          filters.isEmpty ? null : l10n.filterBarFiltersCount(filters.length),
-      activeFilterCount: filters.length,
-      onOpenFilters: () => _openFilters(l10n, catalogue),
-    );
-  }
-
-  Future<void> _openFilters(
-      AppLocalizations l10n, List<CatalogueSegment> catalogue) {
+    final catalogue = _catalogueOf(_pins);
     final regions = catalogueRegions(catalogue);
     final surfaces = catalogueSurfaces(catalogue);
     return showFilterSheet(
@@ -274,8 +338,8 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
       onReset: _reset,
       builder: (sheetContext, setSheet) {
         final theme = Theme.of(sheetContext);
-        Widget group<T>(String heading, List<(T, String)> options, T selected,
-                ValueChanged<T> onPick) =>
+        Widget group(String heading, List<(String?, String)> options,
+                String? selected, ValueChanged<String?> onPick) =>
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpace.md),
               child: Column(
@@ -295,7 +359,7 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
                             label: Text(label),
                             selected: value == selected,
                             onSelected: (_) {
-                              setState(() => onPick(value));
+                              _update(() => onPick(value));
                               setSheet(() {});
                             },
                           ),
@@ -310,7 +374,7 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (regions.length > 1)
-              group<String?>(
+              group(
                 l10n.filterBarRegion,
                 [
                   (null, l10n.segmentCatalogueAllRegions),
@@ -320,7 +384,7 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
                 (v) => _region = v,
               ),
             if (surfaces.length > 1)
-              group<String?>(
+              group(
                 l10n.filterBarSurface,
                 [
                   (null, l10n.segmentCatalogueAllSurfaces),
@@ -329,11 +393,10 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
                 _surface,
                 (v) => _surface = v,
               ),
-            group<CatalogueSort>(
-              l10n.filterBarSort,
-              [for (final s in CatalogueSort.values) (s, _sortLabel(l10n, s))],
-              _sort,
-              (v) => _sort = v,
+            Text(
+              l10n.segmentCatalogueIntro,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         );
@@ -341,87 +404,195 @@ class _GlobalSegmentsScreenState extends State<GlobalSegmentsScreen> {
     );
   }
 
-  Widget _buildCatalogue(BuildContext context, AppLocalizations l10n,
-      List<CatalogueSegment> catalogue) {
-    final theme = Theme.of(context);
-    final shown = sortCatalogue(
-      filterCatalogue(
-        catalogue,
-        query: _query,
-        region: _region,
-        surface: _surface,
-      ),
-      _sort,
-    );
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(AppInsets.gutter, AppSpace.sm,
-          AppInsets.gutter, fabScrollClearance(context)),
-      children: [
-        Text(
-          l10n.segmentCatalogueIntro,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: AppSpace.smPlus),
-        // One live region whose CONTENTS swap rather than one per branch: a
-        // status node that is removed when the result set empties announces
-        // nothing on the transition that most needs announcing.
-        Semantics(
-          liveRegion: true,
-          child: shown.isEmpty
-              ? EmptyState(
-                  icon: Icons.filter_alt_off,
-                  title: l10n.segmentCatalogueNoMatches,
-                  ctaLabel: l10n.segmentsPanelResetFilters,
-                  ctaIcon: Icons.close,
-                  onCta: _reset,
-                )
-              : Text(
-                  l10n.segmentCatalogueCount(shown.length),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-        ),
-        const SizedBox(height: AppSpace.sm),
-        for (final segment in shown) ...[
-          _CatalogueCard(segment: segment, onTap: () => _open(segment.id)),
-          const SizedBox(height: AppSpace.sm),
-        ],
+  Future<void> _openSearch() async {
+    final l10n = AppLocalizations.of(context);
+    final id = await showExploreSearch(
+      context,
+      hint: l10n.segmentCatalogueSearchHint,
+      emptyText: l10n.segmentCatalogueNoMatches,
+      failedText: l10n.segmentCatalogueLoadFailed,
+      search: (q) async => [
+        for (final p in _byIds(filterCatalogue(_catalogueOf(_filtered), query: q))
+            .take(30))
+          (id: p.id, name: p.name, meta: p.region ?? ''),
       ],
     );
+    if (id != null && mounted) _select(id, frame: true);
   }
-}
 
-class _CatalogueCard extends StatelessWidget {
-  final CatalogueSegment segment;
-  final VoidCallback onTap;
+  Future<void> _openList() async {
+    final l10n = AppLocalizations.of(context);
+    final id = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ExploreListPage<ExploreSegmentPin>(
+          title: l10n.exploreMapListSegmentsTitle,
+          changes: _changes,
+          items: () => _inView,
+          sorts: () => CatalogueSort.values,
+          sortLabel: (s) => _sortLabel(l10n, s as CatalogueSort),
+          initialSort: CatalogueSort.name,
+          sortBy: (items, s) =>
+              _byIds(sortCatalogue(_catalogueOf(items), s as CatalogueSort)),
+          onOpenFilters: _openFilters,
+          filterCount: () => _filterCount,
+          searchHint: l10n.exploreMapListSearchLabel,
+          emptyText: l10n.exploreMapEmptySegments,
+          cardBuilder: (context, p, onTap) => ExploreListCard(
+            key: ValueKey('segment-list-card-${p.id}'),
+            name: p.name,
+            detail: p.region,
+            stats: _stats(l10n, p),
+            onTap: onTap,
+            thumbnail: TrackPreview(points: p.line, aspect: 1),
+          ),
+        ),
+      ),
+    );
+    if (id != null && mounted) _select(id, frame: true);
+  }
 
-  const _CatalogueCard({required this.segment, required this.onTap});
+  /// What covers the map's middle while there is nothing to browse: the read
+  /// in flight, a failed read with Retry, an empty catalogue with the way to
+  /// park courses. The map, its menu and Park courses stay around it.
+  Widget? _status(AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    Widget card(Widget child) => Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppInsets.gutter, 64, AppInsets.gutter, 0),
+          child: Material(
+            color: theme.colorScheme.surface,
+            elevation: 2,
+            borderRadius: BorderRadius.circular(16),
+            child: child,
+          ),
+        );
+    if (_loading) {
+      return card(Padding(
+        padding: const EdgeInsets.all(AppSpace.md),
+        child: Semantics(
+          liveRegion: true,
+          child: Row(
+            children: [
+              const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: AppSpace.smPlus),
+              Expanded(child: Text(l10n.segmentsPanelLoading)),
+            ],
+          ),
+        ),
+      ));
+    }
+    if (_error) {
+      return card(AppErrorState(
+        message: l10n.segmentCatalogueLoadFailed,
+        onRetry: _load,
+      ));
+    }
+    if (_pins.isEmpty) {
+      return card(EmptyState(
+        icon: Icons.terrain,
+        title: l10n.segmentCatalogueEmpty,
+        ctaLabel: l10n.parksBrowseLink,
+        ctaIcon: Icons.park_outlined,
+        onCta: _openParks,
+      ));
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final elevation = segment.elevationM;
-    final region = segment.region?.trim();
-    return ListCard.row(
-      margin: EdgeInsets.zero,
-      dense: true,
-      onTap: onTap,
-      chevron: true,
-      title: segment.name,
-      subtitle: region == null || region.isEmpty ? null : region,
-      meta: Text(
-        [
-          formatDistanceForPref((segment.distanceM ?? 0).toDouble()),
-          if (elevation != null && elevation > 0)
-            formatElevationForPref(elevation.toDouble()),
-          routeSurfaceLabel(l10n, segment.surface),
-        ].join(' · '),
-        style: theme.textTheme.bodySmall
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+    return HubTabBody(
+      // The view's own name: "Famous segments" under a tab reading
+      // "Segments" was two names for one place (issue #1374 report 2).
+      title: l10n.runSurfaceTabSegments,
+      // A map never scrolls the hub's large title away (decisions § 2610).
+      collapsesHubTitle: true,
+      onRefresh: _load,
+      body: _buildMap(context, l10n),
+    );
+  }
+
+  Widget _buildMap(BuildContext context, AppLocalizations l10n) {
+    final filtered = _filtered;
+    final inView = _inView;
+    final selected = _selected;
+    final center = _center;
+    final status = _status(l10n);
+    final ready = status == null;
+    final empty =
+        ready && _bounds != null && inView.isEmpty && selected == null;
+    final nearest = empty && center != null ? nearestTo(filtered, center) : null;
+    return MapFirstPage(
+      map: ExploreSegmentsMap(
+        controller: _map,
+        pins: filtered,
+        lines: _lines,
+        selectedId: _selectedId,
+        onMove: _onMove,
+        onTap: _onTap,
       ),
+      overlays: [
+        ExploreTopBar(
+          menu: widget.chrome?.menu ?? const SizedBox.shrink(),
+          searchLabel: l10n.segmentCatalogueSearchHint,
+          onSearch: _openSearch,
+          filtersLabel: _filterCount > 0
+              ? l10n.filterBarFiltersCount(_filterCount)
+              : l10n.filterBarFilters,
+          filterCount: _filterCount,
+          onFilters: () => _openFilters(context),
+        ),
+        ?status,
+        if (empty)
+          Padding(
+            padding: const EdgeInsets.only(top: 64),
+            child: ExploreEmptyOverlay(
+              title: l10n.exploreMapEmptySegments,
+              onZoomOut: _zoomOut,
+              onClearFilters: _filterCount > 0 ? _reset : null,
+              nearestName: nearest?.name,
+              onNearest: nearest == null
+                  ? null
+                  : () => _select(nearest.id, frame: true),
+            ),
+          ),
+      ],
+      controls: [
+        MapControlButton(
+          key: const Key('segments-parks-link'),
+          icon: Icons.park_outlined,
+          label: l10n.parksBrowseLink,
+          compact: true,
+          onPressed: _openParks,
+        ),
+      ],
+      footer: !ready
+          ? null
+          : selected == null
+          ? ExploreListPill(
+              label: l10n.exploreMapListSegments(inView.length),
+              onPressed: _openList,
+            )
+          : ExploreSelectedCard(
+              key: ValueKey('explore-segment-card-${selected.id}'),
+              name: selected.name,
+              detail: selected.region,
+              stats: _stats(l10n, selected),
+              onClose: () => _update(() => _selectedId = null),
+              actions: [
+                FilledButton(
+                  key: const ValueKey('explore-card-details'),
+                  onPressed: () => _open(selected.id),
+                  child: Text(l10n.exploreMapDetails),
+                ),
+              ],
+            ),
+      attribution: ExploreSegmentsMap.credit(context),
+      bottomClearance: DockedFabInset.of(context),
     );
   }
 }

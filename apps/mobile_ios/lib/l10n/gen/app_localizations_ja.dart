@@ -21415,6 +21415,36 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'リスト · 公園$nか所',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => '公園コースのしくみ';
+
+  @override
+  String get parksMapLabel => '公園コースの地図';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park、$count';
+  }
+
+  @override
+  String get parksAboutPark => 'この公園について';
+
+  @override
+  String get parksStartHere => 'ここからスタート';
+
+  @override
+  String get parksBoard => 'ランキング';
+
+  @override
   String get eventCourseLinesMapBoth => 'コースのスタートラインとフィニッシュラインの地図';
 
   @override
@@ -22768,4 +22798,100 @@ class AppLocalizationsJa extends AppLocalizations {
   String runCourseCheckpointPassedLabel(int number) {
     return 'チェックポイント$number、通過済み';
   }
+
+  @override
+  String exploreMapViewMenuLabel(String view) {
+    return '$view、表示を切り替え';
+  }
+
+  @override
+  String get exploreMapViewMine => 'マイルート';
+
+  @override
+  String get exploreMapViewRoutes => 'ルートを探す';
+
+  @override
+  String get exploreMapViewSegments => 'セグメントを探す';
+
+  @override
+  String get exploreMapBackToMap => '地図に戻る';
+
+  @override
+  String exploreMapListRoutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count件のルート',
+    );
+    return 'リスト · $_temp0';
+  }
+
+  @override
+  String exploreMapListSegments(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count件のセグメント',
+    );
+    return 'リスト · $_temp0';
+  }
+
+  @override
+  String get exploreMapListRoutesTitle => '地図上のルート';
+
+  @override
+  String get exploreMapListSegmentsTitle => '地図上のセグメント';
+
+  @override
+  String get exploreMapListSearchLabel => 'このリストを検索';
+
+  @override
+  String get exploreMapSortLabel => '並べ替え';
+
+  @override
+  String get exploreMapSortNearest => '近い順';
+
+  @override
+  String get exploreMapSortName => '名前順';
+
+  @override
+  String get exploreMapOfficialCourse => '公式コース';
+
+  @override
+  String get exploreMapWhichRoute => 'どのルートですか？';
+
+  @override
+  String get exploreMapWhichSegment => 'どのセグメントですか？';
+
+  @override
+  String get exploreMapEmptyRoutes => 'ここにはルートがありません';
+
+  @override
+  String get exploreMapEmptyRoutesHint => '地図を動かすか縮小すると、さらに表示されます。';
+
+  @override
+  String get exploreMapEmptySegments => 'ここにはセグメントがありません';
+
+  @override
+  String get exploreMapZoomOut => '縮小';
+
+  @override
+  String exploreMapNearest(String name) {
+    return '最寄り: $name';
+  }
+
+  @override
+  String get exploreMapLoadFailed => '地図上のルートを読み込めませんでした。';
+
+  @override
+  String get exploreMapDetails => '詳細';
+
+  @override
+  String get exploreMapRunThisRoute => 'このルートを走る';
+
+  @override
+  String get exploreMapRunFailed => 'このルートを読み込めませんでした。接続を確認して、もう一度お試しください。';
+
+  @override
+  String get exploreMapRunRecording => '記録中のランを終了してから、このルートを読み込んでください。';
 }

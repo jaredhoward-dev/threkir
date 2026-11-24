@@ -11,8 +11,10 @@ import 'package:ui_kit/ui_kit.dart' show EmptyState, PageHeading;
 import '../lib/fitness_surface_requests.dart';
 import '../lib/screens/global_segments_screen.dart';
 import '../lib/screens/park_courses_screen.dart';
+import '../lib/screens/parks_screen.dart';
 import '../lib/screens/races_screen.dart';
 import '../lib/routes_views.dart';
+import 'pump_until.dart';
 import 'supabase_test_init.dart';
 import 'worst_case_layout.dart';
 
@@ -46,6 +48,10 @@ final _catalogue = [
     region: 'Paris, FR',
     distanceM: 2135,
     elevationM: 0,
+    waypoints: const [
+      {'lat': 48.8698, 'lng': 2.3075},
+      {'lat': 48.8738, 'lng': 2.2950},
+    ],
   ),
   _segment(
     id: 'b',
@@ -54,6 +60,10 @@ final _catalogue = [
     surface: 'trail',
     distanceM: 857,
     elevationM: 18,
+    waypoints: const [
+      {'lat': 40.7967, 'lng': -73.9530},
+      {'lat': 40.7990, 'lng': -73.9555},
+    ],
   ),
 ];
 
@@ -269,176 +279,150 @@ Future<void> _ensureEnvironment() async {
 void main() {
   setUpAll(_ensureEnvironment);
 
+  // Explore segments is map first (decisions § 2611): every segment on the
+  // map with its start pin, a tapped one as a card, the segments in view as
+  // a list page of their own.
   group('GlobalSegmentsScreen — browse', () {
-    worstCaseTestWidgets('the segment cards', (tester, locale) async {
+    Future<void> settle(WidgetTester tester) => pumpUntil(
+          tester,
+          () => find.byKey(const ValueKey('explore-segment-pin-a')).evaluate().isNotEmpty,
+          describe: 'the catalogue on the map',
+        );
+
+    Future<void> openList(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('explore-list-pill')));
+      await pumpUntil(tester,
+          () => find.byKey(const ValueKey('explore-list-page')).evaluate().isNotEmpty,
+          describe: 'the list page');
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    worstCaseTestWidgets('a segment card on the map', (tester, locale) async {
       await tester.pumpWidget(worstCaseApp(
         locale: locale,
         home: GlobalSegmentsScreen(api: _CatalogueApi(_catalogue)),
       ));
+      await settle(tester);
+      expectNoOverflow(tester, 'Explore segments at rest');
+      tester
+          .widget<GestureDetector>(
+              find.byKey(const ValueKey('explore-segment-pin-a')))
+          .onTap!();
       await tester.pump();
-      await tester.pump();
-      await walkScrollable(tester, primaryScrollable(), 'Segments');
+      expect(find.byKey(const ValueKey('explore-card-name')), findsOneWidget);
     });
 
-    worstCaseTestWidgets('the park course link', (tester, locale) async {
-      final api = _CatalogueApi(
-        [_segment(id: 'a', name: 'Beaver Lake Trail')],
-        parkCourse: true,
-      );
+    worstCaseTestWidgets('the list of segments in view', (tester, locale) async {
       await tester.pumpWidget(worstCaseApp(
         locale: locale,
-        home: GlobalSegmentDetailScreen(api: api, segmentId: 'a'),
+        home: GlobalSegmentsScreen(api: _CatalogueApi(_catalogue)),
       ));
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-      await walkScrollable(tester, primaryScrollable(), 'Segment detail');
+      await settle(tester);
+      await openList(tester);
+      expect(find.byKey(const ValueKey('segment-list-card-a')), findsOneWidget);
     });
 
-    testWidgets('renders one card per catalogue segment with its region',
-        (tester) async {
+    testWidgets('the map draws every segment; List counts them and its page '
+        'shows one card per segment with its region', (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
+      await settle(tester);
+      expect(find.byKey(const ValueKey('explore-segment-pin-b')), findsOneWidget);
+      expect(find.text('List · 2 segments'), findsOneWidget);
+      await openList(tester);
+      expect(find.text('Segments on the map'), findsWidgets);
       expect(find.text('Champs-Élysées Sprint'), findsOneWidget);
-      expect(find.text('Harlem Hill'), findsOneWidget);
       expect(find.text('Paris, FR'), findsOneWidget);
-      expect(find.text('2 segments'), findsOneWidget);
+      expect(find.text('Harlem Hill'), findsOneWidget);
     });
 
-    testWidgets('an accent-free query still reaches an accented name',
+    testWidgets('the list search folds accents and says when nothing matches',
         (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'champs-elysees');
-      await tester.pumpAndSettle();
+      await settle(tester);
+      await openList(tester);
+      await tester.enterText(find.byType(TextField), 'elysees');
+      await tester.pump();
       expect(find.text('Champs-Élysées Sprint'), findsOneWidget);
       expect(find.text('Harlem Hill'), findsNothing);
-      expect(find.text('1 segment'), findsOneWidget);
-    });
-
-    testWidgets('a query that matches nothing says so rather than showing zero',
-        (tester) async {
-      await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'nowhere at all');
-      await tester.pumpAndSettle();
-      expect(
-        find.text('No segments match these filters — try widening them.'),
-        findsOneWidget,
-      );
-      expect(find.text('0 segments'), findsNothing);
-      expect(find.byType(EmptyState), findsOneWidget);
+      await tester.pump();
+      expect(find.text('No segments here'), findsOneWidget);
     });
 
-    testWidgets('resetting from the no-match state clears the search field too',
+    testWidgets('a tapped pin opens a card; Details opens the segment',
         (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'nowhere at all');
-      await tester.pumpAndSettle();
-      await tester.tap(find.descendant(
-          of: find.byType(EmptyState), matching: find.text('Reset')));
-      await tester.pumpAndSettle();
-      expect(find.byType(EmptyState), findsNothing);
-      expect(find.text('2 segments'), findsOneWidget);
-      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
-          isEmpty);
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('explore-segment-pin-b')));
+      await tester.pump();
+      expect(tester.widget<Text>(find.byKey(const ValueKey('explore-card-name'))).data,
+          'Harlem Hill');
+      expect(find.text('New York, US'), findsOneWidget);
+      expect(find.byKey(const ValueKey('explore-list-pill')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('explore-card-details')));
+      await pumpUntil(tester,
+          () => find.text('Elevation gain').evaluate().isNotEmpty,
+          describe: 'the segment page');
+      expect(find.byType(GlobalSegmentDetailScreen), findsOneWidget);
     });
 
-    testWidgets('the surface filter narrows to that surface only',
+    testWidgets('a list card returns to the map with that segment open',
         (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
-      // Surface waits in the Filters sheet, and shows as a removable chip.
+      await settle(tester);
+      await openList(tester);
+      await tester.tap(find.byKey(const ValueKey('segment-list-card-a')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('explore-list-page')), findsNothing);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('explore-card-name'))).data,
+          'Champs-Élysées Sprint');
+    });
+
+    testWidgets('the surface filter narrows the map and the count',
+        (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
+      await settle(tester);
       await tester.tap(find.byTooltip('Filters'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.widgetWithText(ChoiceChip, 'Trail'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Trail')).selected,
+          isTrue);
       await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
-      expect(find.widgetWithText(InputChip, 'Trail'), findsOneWidget);
-      expect(find.text('Harlem Hill'), findsOneWidget);
-      expect(find.text('Champs-Élysées Sprint'), findsNothing);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('explore-segment-pin-a')), findsNothing);
+      expect(find.byKey(const ValueKey('explore-segment-pin-b')), findsOneWidget);
     });
 
-    testWidgets('a failed catalogue load offers a retry, not an empty state',
+    testWidgets('a failed catalogue load offers a retry over the map',
         (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _ThrowingCatalogueApi())));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Couldn’t load the segment catalogue.'),
-        findsOneWidget,
-      );
-      expect(find.text('Retry'), findsOneWidget);
-      expect(
-        find.text('No famous segments in the catalogue yet.'),
-        findsNothing,
-      );
+      await pumpUntil(tester, () => find.text('Retry').evaluate().isNotEmpty,
+          describe: 'the retry');
+      expect(find.byKey(const ValueKey('explore-segments-map')), findsOneWidget);
+      expect(find.byType(EmptyState), findsNothing);
     });
 
-    testWidgets('an empty catalogue renders the shared empty state',
-        (tester) async {
-      await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _NoParksApi())));
-      await tester.pumpAndSettle();
-      final empty = find.byType(EmptyState);
-      expect(empty, findsOneWidget);
-      expect(
-        find.descendant(
-            of: empty,
-            matching: find.text('No famous segments in the catalogue yet.')),
-        findsOneWidget,
-      );
-      expect(find.byType(TextField), findsNothing);
-    });
-
-    // Under the Routes tab (issue #1374, decisions § 2490) the catalogue is
-    // Explore → Segments: the tab hands it the Mine · Explore row and the
-    // Routes · Segments chips, which sit above the list, and stay when the
-    // catalogue is empty so the runner can still switch back.
-    RoutesExploreChrome chrome() => RoutesExploreChrome(
-          viewBar: const SizedBox(key: Key('test-view-bar'), height: 40),
-          chips: [
-            FilterChip(
-              key: const Key('test-chip-segments'),
-              label: const Text('Segments'),
-              selected: true,
-              onSelected: (_) {},
-            ),
-          ],
-        );
-
-    testWidgets('a chrome puts the view row and its chips above the list',
-        (tester) async {
+    testWidgets('a chrome puts the view menu on the map', (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(
-          api: _CatalogueApi(_catalogue), chrome: chrome())));
-      await tester.pumpAndSettle();
-      final viewBar = find.byKey(const Key('test-view-bar'));
-      final chip = find.byKey(const Key('test-chip-segments'));
-      final card = find.text('Champs-Élysées Sprint');
-      expect(viewBar, findsOneWidget);
-      expect(chip, findsOneWidget);
-      expect(card, findsOneWidget);
-      expect(tester.getTopLeft(viewBar).dy,
-          lessThan(tester.getTopLeft(chip).dy));
-      expect(tester.getTopLeft(chip).dy, lessThan(tester.getTopLeft(card).dy));
+        api: _CatalogueApi(_catalogue),
+        chrome: const RoutesExploreChrome(menu: Text('Explore segments')),
+      )));
+      await settle(tester);
+      expect(find.text('Explore segments'), findsOneWidget);
     });
 
-    testWidgets('an empty catalogue keeps the view row and its chips',
-        (tester) async {
-      await tester.pumpWidget(
-          _host(GlobalSegmentsScreen(api: _NoParksApi(), chrome: chrome())));
-      await tester.pumpAndSettle();
-      expect(find.byType(EmptyState), findsOneWidget);
-      expect(find.byKey(const Key('test-view-bar')), findsOneWidget);
-      expect(find.byKey(const Key('test-chip-segments')), findsOneWidget);
-    });
-
-    // Park courses live in Races & courses (decisions § 2480). With no shell
-    // to ask, the action opens that screen on its Courses view.
     testWidgets('the empty catalogue points to the Courses view of Races & '
         'courses', (tester) async {
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _NoParksApi())));
-      await tester.pumpAndSettle();
+      await pumpUntil(tester, () => find.byType(EmptyState).evaluate().isNotEmpty,
+          describe: 'the empty state');
       await tester.tap(find.descendant(
           of: find.byType(EmptyState), matching: find.text('Park courses')));
       await tester.pump();
@@ -446,12 +430,6 @@ void main() {
       expect(find.byType(ParksScreen), findsNothing);
       expect(tester.widget<RacesScreen>(find.byType(RacesScreen)).initialShow,
           RacesShow.courses);
-      expect(
-        tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Courses'))
-            .selected,
-        isTrue,
-      );
     });
 
     testWidgets('with a shell listening, Park courses asks it for Races & '
@@ -461,9 +439,10 @@ void main() {
       fitnessSurfaceRequests.addListener(shell);
       addTearDown(() => fitnessSurfaceRequests.removeListener(shell));
       await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _NoParksApi())));
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.tap(find.byKey(const Key('segments-parks-link')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(drained, [
         (tab: FitnessTab.races, racesShow: RacesShow.courses, routesShow: null),
       ]);
@@ -475,17 +454,8 @@ void main() {
       await tester.pumpWidget(
         _host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue, viewer: null))),
       );
-      await tester.pumpAndSettle();
-      expect(find.text('Harlem Hill'), findsOneWidget);
-    });
-
-    testWidgets('tapping a card opens that segment', (tester) async {
-      await tester.pumpWidget(_host(GlobalSegmentsScreen(api: _CatalogueApi(_catalogue))));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Harlem Hill'));
-      await tester.pumpAndSettle();
-      expect(find.byType(GlobalSegmentDetailScreen), findsOneWidget);
-      expect(find.text('Elevation gain'), findsOneWidget);
+      await settle(tester);
+      expect(find.byKey(const ValueKey('explore-segment-pin-b')), findsOneWidget);
     });
   });
 

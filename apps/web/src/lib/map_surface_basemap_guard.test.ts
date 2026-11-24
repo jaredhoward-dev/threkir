@@ -61,6 +61,8 @@ const MAP_SURFACES: Record<string, ['shared' | 'unkeyed', string]> = {
 	'lib/components/course_preview/flyover_video_export.ts': ['shared', 'the offscreen map the flyover video records'],
 	'lib/components/CourseLinesMap.svelte': ['shared', 'a course\'s start and finish lines, and the editor that moves them'],
 	'lib/components/parks/ParkCoursesMap.svelte': ['shared', 'a park\'s official courses and their start pins'],
+	'lib/components/ExploreMap.svelte': ['shared', 'Explore routes and segments, map first'],
+	'lib/components/parks/ParksMap.svelte': ['unkeyed', 'the parks index: one HTML pill per park, styled from the page theme'],
 };
 
 /// Infrastructure, not a surface: the MapLibre re-export and the resize
@@ -265,7 +267,7 @@ test('a map surface resolves its style URL through the shared precedence', () =>
 	}
 	assert.equal(
 		Object.keys(MAP_SURFACES).length,
-		11,
+		13,
 		'the population this scan ran over — a shrinking register would let it pass over nothing',
 	);
 	assert.deepEqual(

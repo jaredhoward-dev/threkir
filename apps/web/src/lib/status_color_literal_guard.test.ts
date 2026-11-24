@@ -685,6 +685,16 @@ const REGISTER: Record<string, Record<string, [number, LiteralRole]>> = {
 	// rather than grading: a NEW hue in this file must still be a deliberate
 	// edit. A literal is structural because MapLibre parses paint values itself
 	// and throws on a var() (§ 528).
+	// A park's course lines, one colour each (decisions § 2612): the --kind-*
+	// marks of app.css repeated, because MapLibre paints a literal and the
+	// line is keyed on the basemap, not the page theme. Held to app.css by
+	// parks/park_course_colours.test.ts.
+	'lib/parks/park_course_colours.ts': {
+		'032122': [1, 'cartographic'], '13345B': [1, 'cartographic'], '6C2C68': [1, 'cartographic'],
+		'774F05': [1, 'cartographic'], C72F20: [1, 'cartographic'], '7E7B8B': [1, 'cartographic'],
+		DBF8F9: [1, 'cartographic'], CAE0FC: [1, 'cartographic'], E7BCE2: [1, 'cartographic'],
+		E9AC4F: [1, 'cartographic'], ED8B84: [1, 'cartographic'], '9794A5': [1, 'cartographic'],
+	},
 	'lib/routes/basemap_contrast.ts': {
 		F2EFE9: [1, 'cartographic'], '1A1B20': [1, 'cartographic'],
 		AAD3DF: [1, 'cartographic'], DCDCDC: [1, 'cartographic'],

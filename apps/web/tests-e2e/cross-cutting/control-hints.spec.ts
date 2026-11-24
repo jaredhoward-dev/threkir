@@ -316,9 +316,10 @@ test.describe('every swept filter and preference control renders its explanation
 
 	test('/segments — the catalogue filters', async ({ page }) => {
 		await page.goto('/segments');
-		// The search stays on the bar; the rest open in the Filters sheet with
+		// The search and the sort sit over the list of the segments in view
+		// (decisions § 2611); region and surface open in the Filters sheet with
 		// their explanation beside them (#1374).
-		const bar = page.locator('.catalogue-filter-bar');
+		const bar = page.getByTestId('explore-list');
 		await expect(bar).toBeVisible({ timeout: 15_000 });
 		await assertEveryControlExplained(bar, '/segments (bar)');
 		await page.getByTestId('segment-catalogue-filters-toggle').click();

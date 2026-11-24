@@ -1,92 +1,69 @@
-import 'dart:async';
-import 'dart:ui' show SemanticsFlag;
-
 import 'package:api_client/api_client.dart';
 import 'package:core_models/core_models.dart' as cm;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show TextInputAction;
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
-import 'package:ui_kit/ui_kit.dart'
-    show
-        AppSearchField,
-        AppSpace,
-        AppTheme,
-        ChoiceChipOption,
-        buildChoiceChip,
-        HubPrimaryActions,
-        HubTabScope,
-        MapControlButton,
-        PageHeading;
-import '../lib/fab_clearance.dart';
+import 'package:ui_kit/ui_kit.dart' show MapControlButton;
+
+import '../lib/explore_viewport.dart' show ExploreSort;
 import '../lib/l10n/gen/app_localizations.dart';
 import '../lib/local_route_store.dart';
+import '../lib/main.dart' show pendingArmRunWithRoute;
 import '../lib/preferences.dart';
-import '../lib/quiet_location.dart' show LocationPermanentlyDeniedException;
 import '../lib/routes_views.dart';
 import '../lib/screens/explore_routes_screen.dart';
+import '../lib/widgets/explore_map_chrome.dart';
+import 'pump_until.dart';
 import 'supabase_test_init.dart';
 import 'worst_case_layout.dart';
 
-bool _supabaseReady = false;
+// Routes → Explore routes is map first (decisions § 2611): the map is the
+// page, a tapped pin opens a card with the whole name, "List · N routes"
+// opens the routes in view as a page of their own, and an empty view says so.
 
-Future<void> _ensureSupabase() async {
-  if (_supabaseReady) return;
-  TestWidgetsFlutterBinding.ensureInitialized();
-  SharedPreferences.setMockInitialValues({});
-  // The map reads dotenv for its tile style; empty, it falls back to OSM.
-  dotenv.loadFromString(isOptional: true);
-  await initializeTestSupabase();
-  _supabaseReady = true;
-}
+const _longName = 'Cherry Creek Trail out-and-back to Confluence Park and '
+    'the long way home';
 
-Future<({Preferences prefs, LocalRouteStore routeStore})> _makeStores() async {
-  SharedPreferences.setMockInitialValues({});
-  final prefs = Preferences();
-  await prefs.init();
-  return (prefs: prefs, routeStore: LocalRouteStore());
-}
-
-cm.Route _route(String id, String name) => cm.Route(
+cm.DiscoverableRoutePin _pin(
+  String id,
+  String name, {
+  double lat = 20,
+  double lng = 0,
+  bool official = false,
+  double distanceM = 12500,
+  String surface = 'trail',
+  int runCount = 0,
+}) =>
+    cm.DiscoverableRoutePin(
       id: id,
       name: name,
-      waypoints: const [],
-      distanceMetres: 5000,
+      featured: false,
+      distanceM: distanceM,
+      elevationM: 80,
+      surface: surface,
+      runCount: runCount,
+      lat: lat,
+      lng: lng,
+      official: official,
     );
 
-/// A signed-in viewer with one public route in the results. A held [gate]
-/// keeps a bookmark request in flight; [failWith] makes it fail.
-class _BookmarkApi extends ApiClient {
-  _BookmarkApi({List<cm.Route> bookmarked = const []}) : _bookmarked = bookmarked;
+const _line = [
+  cm.Waypoint(lat: 20, lng: 0),
+  cm.Waypoint(lat: 20.01, lng: 0.01),
+];
 
-  final List<cm.Route> _bookmarked;
+class _Api extends ApiClient {
+  _Api({this.pins = const [], this.signedIn = true});
+
+  List<cm.DiscoverableRoutePin> pins;
+  final bool signedIn;
   final bookmarkCalls = <String>[];
-  final unbookmarkCalls = <String>[];
-  Completer<void>? gate;
-  Object? failWith;
 
   @override
-  String? get userId => 'u1';
-
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async =>
-      after == null
-          ? cm.KeysetPage([_route('r1', 'Morning loop')], null)
-          : const cm.KeysetPage(<cm.Route>[], null);
+  String? get userId => signedIn ? 'u1' : null;
 
   @override
   Future<List<String>> fetchPopularRouteTags({int limit = 20}) async =>
@@ -94,60 +71,102 @@ class _BookmarkApi extends ApiClient {
 
   @override
   Future<List<cm.Route>> fetchBookmarkedRoutes({int limit = 200}) async =>
-      _bookmarked;
+      const [];
 
   @override
-  Future<void> bookmarkRoute(String routeId) async {
-    bookmarkCalls.add(routeId);
-    await gate?.future;
-    if (failWith != null) throw failWith!;
-  }
+  Future<List<cm.DiscoverableRoutePin>> fetchDiscoverableRoutesInBbox({
+    required double minLng,
+    required double minLat,
+    required double maxLng,
+    required double maxLat,
+    int limit = 100,
+    String filter = 'popular',
+    List<double>? distMin,
+    List<double?>? distMax,
+  }) async =>
+      pins;
 
   @override
-  Future<void> unbookmarkRoute(String routeId) async {
-    unbookmarkCalls.add(routeId);
-    await gate?.future;
-    if (failWith != null) throw failWith!;
-  }
+  Future<({cm.Route? route, String? ownerId})> fetchRouteById(
+          String routeId) async =>
+      (
+        route: cm.Route(
+          id: routeId,
+          name: pins.firstWhere((p) => p.id == routeId).name,
+          waypoints: _line,
+          distanceMetres: 12500,
+        ),
+        ownerId: 'someone-else',
+      );
+
+  @override
+  Future<List<cm.Waypoint>> clipRouteForViewer(String routeId) async => _line;
+
+  @override
+  Future<void> bookmarkRoute(String routeId) async =>
+      bookmarkCalls.add(routeId);
 }
+
+Future<Preferences> _prefs() async {
+  SharedPreferences.setMockInitialValues({});
+  final prefs = Preferences();
+  await prefs.init();
+  return prefs;
+}
+
+Widget _screen(
+  ApiClient api,
+  Preferences prefs, {
+  Future<Position> Function()? locateFn,
+}) =>
+    ExploreRoutesScreen(
+      apiClient: api,
+      routeStore: LocalRouteStore(),
+      preferences: prefs,
+      locateFn: locateFn,
+      chrome: RoutesExploreChrome(
+        menu: RoutesViewMenu(
+          show: RoutesShow.routes,
+          onSelected: (_) {},
+          floating: true,
+        ),
+      ),
+    );
 
 Future<void> _pump(
-  WidgetTester tester, {
-  required Preferences prefs,
-  required LocalRouteStore routeStore,
-  ApiClient? api,
+  WidgetTester tester,
+  ApiClient api, {
+  double textScale = 1.0,
   Future<Position> Function()? locateFn,
-  RoutesExploreChrome? chrome,
-}) {
-  return tester.pumpWidget(
-    MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: ExploreRoutesScreen(
-        apiClient: api,
-        routeStore: routeStore,
-        preferences: prefs,
-        locateFn: locateFn,
-        chrome: chrome,
-      ),
+}) async {
+  final prefs = await _prefs();
+  tester.view.physicalSize = const Size(412, 915);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
     ),
-  );
+    home: _screen(api, prefs, locateFn: locateFn),
+  ));
 }
 
-class _NearbyApi extends _BookmarkApi {
-  final nearbyCalls = <(double, double)>[];
-
-  @override
-  Future<List<cm.Route>> nearbyPublicRoutes({
-    required double lat,
-    required double lng,
-    double radiusM = 50000,
-    int limit = 50,
-  }) async {
-    nearbyCalls.add((lat, lng));
-    return [_route('n1', 'Riverside 10K')];
-  }
-}
+/// Waits for the map's read of the routes in view to land: [count] routes
+/// on the List pill, or the empty view when there are none.
+Future<void> _settle(WidgetTester tester, int count) => pumpUntil(
+      tester,
+      () => count == 0
+          ? find.byKey(const ValueKey('explore-empty-view')).evaluate().isNotEmpty
+          : find
+              .text(count == 1 ? 'List · 1 route' : 'List · $count routes')
+              .evaluate()
+              .isNotEmpty,
+      describe: '$count routes in view to load',
+    );
 
 Position _fix(double lat, double lng) => Position(
       latitude: lat,
@@ -163,1129 +182,283 @@ Position _fix(double lat, double lng) => Position(
     );
 
 void main() {
-  setUpAll(_ensureSupabase);
-  _mapFirstTests();
-  _layoutTests();
-  _critiqueTests();
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    // The map reads dotenv for its tile style; empty, it falls back to OSM.
+    dotenv.loadFromString(isOptional: true);
+    await initializeTestSupabase();
+  });
 
-  group('ExploreRoutesScreen — initial render', () {
-    testWidgets('renders the Explore Routes app-bar title', (tester) async {
-      final s = await _makeStores();
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore);
-      await tester.pump();
-      expect(find.widgetWithText(PageHeading, 'Explore Routes'), findsOneWidget);
-    });
+  testWidgets('the map is the page: the view menu, Search and Filters on its '
+      'top edge, compact Near me, and the List pill counting the routes in '
+      'view', (tester) async {
+    await _pump(tester, _Api(pins: [_pin('a', 'Alpha'), _pin('b', 'Bravo', lng: 60)]));
+    await _settle(tester, 2);
+    expect(find.text('Explore routes'), findsOneWidget);
+    expect(find.byTooltip('Filters'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-search')), findsOneWidget);
+    expect(find.text('List · 2 routes'), findsOneWidget);
+    expect(
+        tester
+            .widget<MapControlButton>(
+                find.byKey(const ValueKey('explore-near-me')))
+            .compact,
+        isTrue);
+    expect(find.byType(TextField), findsNothing,
+        reason: 'no search row: the search is a button on the map');
+  });
 
-    testWidgets('Featured is in the Filters sheet and shows as a removable '
-        'chip once on', (tester) async {
-      // Reason: Featured is the entry point into curated routes —
-      // its absence would mean users can't surface non-personal
-      // content from the Explore tab. It moved into the Filters sheet with
-      // the bar's other filters (issue #1374), so on, it shows on the line.
-      final s = await _makeStores();
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore);
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('filter-bar-filters')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Featured'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
-      expect(find.widgetWithText(InputChip, 'Featured'), findsOneWidget);
-      expect(find.byTooltip('Remove filter: Featured'), findsOneWidget);
-    });
+  testWidgets('a tapped pin opens a card with the whole name at 1.3x, the '
+      'Official line off the title, and its actions', (tester) async {
+    await _pump(tester, _Api(pins: [_pin('a', _longName, official: true)]),
+        textScale: 1.3);
+    await _settle(tester, 1);
+    await tester.tap(find.byKey(const ValueKey('explore-pin-a')));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-card-name')).evaluate().isNotEmpty,
+        describe: 'the card');
+    expect(tester.takeException(), isNull);
+    final name = tester.renderObject<RenderParagraph>(find.descendant(
+        of: find.byKey(const ValueKey('explore-card-name')),
+        matching: find.byType(RichText)));
+    expect(name.text.toPlainText(), _longName);
+    expect(name.didExceedMaxLines, isFalse, reason: 'the name wraps, never cut');
+    expect(find.textContaining('Official course', findRichText: true), findsOneWidget);
+    expect(
+        tester.getRect(find.textContaining('Official course', findRichText: true)).top,
+        greaterThanOrEqualTo(
+            tester.getRect(find.byKey(const ValueKey('explore-card-name'))).bottom),
+        reason: 'the Official line sits under the name, not beside it');
+    expect(find.text('Run this route'), findsOneWidget);
+    expect(find.text('Details'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-list-pill')), findsNothing,
+        reason: 'the card takes the pill\'s place');
 
-    testWidgets('one search field, with clear, and Near me a button on the '
-        'map', (tester) async {
-      final s = await _makeStores();
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore);
-      await tester.pump();
-      expect(find.byType(AppSearchField), findsOneWidget);
-      final nearMe = find.byKey(const ValueKey('explore-near-me'));
-      expect(find.descendant(of: nearMe, matching: find.text('Near me')),
-          findsOneWidget);
-      expect(
-          find.descendant(
-              of: find.byKey(const ValueKey('map-first-controls')),
-              matching: nearMe),
-          findsOneWidget);
-    });
+    await tester.tap(find.byKey(const ValueKey('explore-card-close')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('explore-card-name')), findsNothing);
+    expect(find.byKey(const ValueKey('explore-list-pill')), findsOneWidget);
+  });
 
-    // Under the Routes tab (issue #1374, decisions § 2490) the tab hands this
-    // body its Mine · Explore row and its Routes · Segments chips; both must
-    // sit above the results, the chips leading the body's own.
-    testWidgets('a chrome puts the view row and its chips above the list',
-        (tester) async {
-      final s = await _makeStores();
-      await _pump(
+  testWidgets('Run this route loads the clipped line into the recorder '
+      'without starting it, and Save bookmarks by reference', (tester) async {
+    addTearDown(() => pendingArmRunWithRoute.value = null);
+    final api = _Api(pins: [_pin('a', 'Alpha')]);
+    await _pump(tester, api);
+    await _settle(tester, 1);
+    await tester.tap(find.byKey(const ValueKey('explore-pin-a')));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-card-run')).evaluate().isNotEmpty,
+        describe: 'the card');
+    await tester.tap(find.byKey(const ValueKey('explore-card-run')));
+    await pumpUntil(tester, () => pendingArmRunWithRoute.value != null,
+        describe: 'the route armed');
+    expect(pendingArmRunWithRoute.value!.id, 'a');
+    expect(pendingArmRunWithRoute.value!.waypoints, _line);
+
+    await tester.tap(find.byKey(const ValueKey('explore-card-save')));
+    await pumpUntil(tester, () => api.bookmarkCalls.isNotEmpty,
+        describe: 'the bookmark');
+    expect(api.bookmarkCalls, ['a']);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('a tap on overlapping routes asks which route', (tester) async {
+    await _pump(tester,
+        _Api(pins: [_pin('a', 'Alpha'), _pin('b', 'Bravo', lat: 20.0001)]));
+    await _settle(tester, 2);
+    await tester.tap(find.byKey(const ValueKey('explore-cluster-a')));
+    await pumpUntil(tester, () => find.text('Which route?').evaluate().isNotEmpty,
+        describe: 'the picker');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const ValueKey('explore-picker-b')));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-card-name')).evaluate().isNotEmpty,
+        describe: 'the card');
+    expect(tester.widget<Text>(find.byKey(const ValueKey('explore-card-name'))).data,
+        'Bravo');
+  });
+
+  testWidgets('List · N opens the routes in view as a page; a card there '
+      'returns to the map with that route open', (tester) async {
+    await _pump(
         tester,
-        prefs: s.prefs,
-        routeStore: s.routeStore,
-        api: _BookmarkApi(),
-        chrome: RoutesExploreChrome(
-          viewBar: const SizedBox(key: Key('test-view-bar'), height: 40),
-          chips: [
-            FilterChip(
-              key: const Key('test-chip-routes'),
-              label: const Text('Routes'),
-              selected: true,
-              onSelected: (_) {},
-            ),
-          ],
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
+        _Api(pins: [
+          _pin('a', 'Alpha', runCount: 1),
+          _pin('b', 'Bravo', lng: 60, runCount: 9),
+        ]));
+    await _settle(tester, 2);
+    await tester.tap(find.text('List · 2 routes'));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-list-page')).evaluate().isNotEmpty,
+        describe: 'the list page');
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Routes on the map'), findsWidgets);
+    // Most run first while the runner's place is unknown.
+    final a = tester.getRect(find.byKey(const ValueKey('explore-list-card-a')));
+    final b = tester.getRect(find.byKey(const ValueKey('explore-list-card-b')));
+    expect(b.top, lessThan(a.top));
+    expect(find.text(exploreSortLabelForTest(ExploreSort.mostRun)), findsOneWidget);
 
-      final viewBar = find.byKey(const Key('test-view-bar'));
-      final chip = find.byKey(const Key('test-chip-routes'));
-      final row = find.text('Morning loop');
-      expect(viewBar, findsOneWidget);
-      expect(chip, findsOneWidget);
-      expect(row, findsOneWidget);
-      expect(tester.getTopLeft(viewBar).dy,
-          lessThan(tester.getTopLeft(chip).dy));
-      expect(tester.getTopLeft(chip).dy, lessThan(tester.getTopLeft(row).dy));
-    });
+    await tester.tap(find.byKey(const ValueKey('explore-list-card-a')));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-card-name')).evaluate().isNotEmpty,
+        describe: 'back on the map with the card open');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('explore-list-page')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('explore-card-name'))).data,
+        'Alpha');
   });
 
-  // Saving a public route is a `saved_routes` reference that a second tap
-  // removes (decisions § 30). The row used to clone the route into the local
-  // store and never rebuild, so the bookmark stayed unfilled after a save.
-  group('ExploreRoutesScreen — the bookmark toggle', () {
-    Finder filled() => find.byIcon(Icons.bookmark);
-    Finder empty() => find.byIcon(Icons.bookmark_border);
+  testWidgets('a filter narrows the pins and the count; an empty view says '
+      'so with Zoom out and Clear filters', (tester) async {
+    await _pump(
+        tester,
+        _Api(pins: [
+          _pin('a', 'Alpha', surface: 'road'),
+          _pin('b', 'Bravo', lng: 60, surface: 'trail'),
+        ]));
+    await _settle(tester, 2);
+    await tester.tap(find.byTooltip('Filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Road'));
+    await tester.pump();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('List · 1 route'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-pin-b')), findsNothing);
 
-    Future<void> settle(WidgetTester tester) async {
-      await tester.pump();
-      await tester.pump();
-    }
-
-    testWidgets('a tap fills the bookmark at once and saves by reference',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _BookmarkApi()..gate = Completer<void>();
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore, api: api);
-      await settle(tester);
-      expect(empty(), findsOneWidget);
-
-      await tester.tap(empty());
-      await tester.pump();
-      expect(filled(), findsOneWidget,
-          reason: 'the tap must visibly land before the request returns');
-      expect(api.bookmarkCalls, ['r1']);
-
-      await tester.tap(filled());
-      await tester.pump();
-      expect(api.bookmarkCalls, ['r1'],
-          reason: 'a tap during the request must not fire a second one');
-      expect(api.unbookmarkCalls, isEmpty);
-
-      api.gate!.complete();
-      await settle(tester);
-      expect(filled(), findsOneWidget);
-      expect(find.text('Saved "Morning loop" to your library'), findsOneWidget);
-      expect(s.routeStore.routes, isEmpty,
-          reason: 'a bookmark is a reference, not a private copy');
-      await tester.pump(const Duration(seconds: 8));
-    });
-
-    testWidgets('a bookmarked route shows filled, and a tap removes it',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _BookmarkApi(bookmarked: [_route('r1', 'Morning loop')]);
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore, api: api);
-      await settle(tester);
-      expect(filled(), findsOneWidget);
-      expect(find.byTooltip('Remove from your library'), findsOneWidget);
-
-      await tester.tap(filled());
-      await settle(tester);
-      expect(api.unbookmarkCalls, ['r1']);
-      expect(empty(), findsOneWidget);
-      expect(find.text('Removed "Morning loop" from your library'),
-          findsOneWidget);
-      await tester.pump(const Duration(seconds: 8));
-    });
-
-    testWidgets('a failed save puts the bookmark back and says so',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _BookmarkApi()..failWith = Exception('offline');
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore, api: api);
-      await settle(tester);
-
-      await tester.tap(empty());
-      await settle(tester);
-      expect(empty(), findsOneWidget,
-          reason: 'the icon must not claim a save that did not happen');
-      expect(find.textContaining('Bookmark failed'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 8));
-    });
-
-    testWidgets('a library route that only shares the name is not this one',
-        (tester) async {
-      final s = await _makeStores();
-      // ignore: invalid_use_of_visible_for_testing_member
-      s.routeStore.debugSeed([_route('mine-1', 'Morning loop')]);
-      final api = _BookmarkApi();
-      await _pump(tester, prefs: s.prefs, routeStore: s.routeStore, api: api);
-      await settle(tester);
-
-      expect(empty(), findsOneWidget,
-          reason: 'saved-ness is by id; a name match marked unrelated routes '
-              'saved and disabled their button');
-      await tester.tap(empty());
-      await settle(tester);
-      expect(api.bookmarkCalls, ['r1']);
-      await tester.pump(const Duration(seconds: 8));
-    });
+    await tester.tap(find.byTooltip('Filters, 1 on'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Mixed'));
+    await tester.pump();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('No routes here'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-zoom-out')), findsOneWidget);
+    expect(find.text('Clear filters'), findsOneWidget);
   });
 
-  group('ExploreRoutesScreen — Near me', () {
-    testWidgets('searches around the browse fix', (tester) async {
-      final s = await _makeStores();
-      final api = _NearbyApi();
-      await _pump(tester,
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          locateFn: () async => _fix(37.54, -77.43));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
-      await tester.pump();
-      await tester.pump();
-      expect(api.nearbyCalls, [(37.54, -77.43)]);
-      expect(find.text('Riverside 10K'), findsOneWidget);
-    });
-
-    testWidgets('a refused permission says why instead of a generic failure',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _NearbyApi();
-      await _pump(tester,
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          locateFn: () async =>
-              throw const PermissionDeniedException('denied'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
-      await tester.pump();
-      await tester.pump();
-      expect(api.nearbyCalls, isEmpty);
-      expect(
-          find.text('Location permission required to find nearby routes'),
-          findsOneWidget);
-    });
-
-    testWidgets('location switched off says so, not a generic failure',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _NearbyApi();
-      await _pump(tester,
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          locateFn: () async =>
-              throw const LocationServiceDisabledException());
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
-      await tester.pump();
-      await tester.pump();
-      expect(api.nearbyCalls, isEmpty);
-      expect(
-          find.text(
-              'Location unavailable: location is turned off on this device'),
-          findsOneWidget);
-    });
-
-    testWidgets('a fix that never arrives is not called a network timeout',
-        (tester) async {
-      final s = await _makeStores();
-      final api = _NearbyApi();
-      await _pump(tester,
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          locateFn: () async => throw TimeoutException('no fix'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('explore-near-me')));
-      await tester.pump();
-      await tester.pump();
-      expect(api.nearbyCalls, isEmpty);
-      expect(
-          find.text(
-              'Location unavailable: no position yet, try again in a moment'),
-          findsOneWidget);
-      expect(find.textContaining('Connection timed out'), findsNothing);
-    });
+  testWidgets('an empty view says No routes here, with Zoom out', (tester) async {
+    await _pump(tester, _Api());
+    await _settle(tester, 0);
+    expect(find.text('No routes here'), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-zoom-out')), findsOneWidget);
+    expect(find.text('List · 0 routes'), findsOneWidget);
   });
 
-  testWidgets('a result card reads elevation in the reader\'s unit',
+  testWidgets('Near me moves the map and makes nearest first the list order',
       (tester) async {
-    SharedPreferences.setMockInitialValues({'use_miles': true});
-    final prefs = Preferences();
-    await prefs.init();
-    await _pump(tester,
-        prefs: prefs, routeStore: LocalRouteStore(), api: _ClimbApi());
+    await _pump(
+        tester,
+        _Api(pins: [
+          _pin('far', 'Far', lng: 60, runCount: 9),
+          _pin('near', 'Near', runCount: 1),
+        ]),
+        locateFn: () async => _fix(20, 0));
+    await _settle(tester, 2);
+    await tester.tap(find.byKey(const ValueKey('explore-near-me')));
     await tester.pump();
-    await tester.pump();
-    expect(find.text('Hill loop'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'751\sft')), findsOneWidget);
-    expect(find.textContaining('229'), findsNothing);
-  });
-}
-
-class _ClimbApi extends _BookmarkApi {
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async =>
-      after == null
-          ? cm.KeysetPage([
-              cm.Route(
-                id: 'h1',
-                name: 'Hill loop',
-                waypoints: const [],
-                distanceMetres: 5000,
-                elevationGainMetres: 229,
-              ),
-            ], null)
-          : const cm.KeysetPage(<cm.Route>[], null);
-}
-
-/// Many public routes, and one discoverable pin in any viewport.
-class _MapApi extends _BookmarkApi {
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async =>
-      after == null
-          ? cm.KeysetPage([
-              for (var i = 0; i < 12; i++) _route('r$i', 'Public loop $i'),
-            ], null)
-          : const cm.KeysetPage(<cm.Route>[], null);
-
-  @override
-  Future<List<cm.DiscoverableRoutePin>> fetchDiscoverableRoutesInBbox({
-    required double minLng,
-    required double minLat,
-    required double maxLng,
-    required double maxLat,
-    int limit = 100,
-    String filter = 'popular',
-    List<double>? distMin,
-    List<double?>? distMax,
-  }) async =>
-      [
-        const cm.DiscoverableRoutePin(
-          id: 'p1',
-          name: 'Pinned loop',
-          featured: false,
-          distanceM: 5000,
-          surface: 'road',
-          runCount: 3,
-          lat: 10,
-          lng: 10,
-        ),
-      ];
-}
-
-Future<void> _setView(WidgetTester tester, Size size, FakeViewPadding bar,
-    {double textScale = 1}) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
-  tester.view.padding = bar;
-  tester.view.viewPadding = bar;
-  addTearDown(tester.view.reset);
-  tester.platformDispatcher.textScaleFactorTestValue = textScale;
-  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-}
-
-void _mapFirstTests() {
-  // Explore → Routes is a MapFirstPage: the public routes in view on a
-  // full-bleed map, the search results in its sheet (issue #1374).
-  group('ExploreRoutesScreen — map-first', () {
-    testWidgets('the map carries the pins in view; the list is the sheet',
-        (tester) async {
-      final s = await _makeStores();
-      await _pump(tester,
-          prefs: s.prefs, routeStore: s.routeStore, api: _MapApi());
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(find.byKey(const ValueKey('explore-routes-map')), findsOneWidget);
-      expect(find.byKey(const ValueKey('explore-pin-p1')), findsOneWidget);
-      expect(
-          find.descendant(
-              of: find.byKey(const ValueKey('map-first-sheet')),
-              matching: find.text('Public loop 0')),
-          findsOneWidget);
-    });
-
-    testWidgets('320 dp, 2x text, 3-button bar: the last result scrolls clear '
-        'of the bar', (tester) async {
-      await _setView(tester, const Size(320, 640),
-          const FakeViewPadding(bottom: 48),
-          textScale: 2);
-      final s = await _makeStores();
-      await _pump(tester,
-          prefs: s.prefs, routeStore: s.routeStore, api: _MapApi());
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tester.takeException(), isNull);
-      final last = find.text('Public loop 11');
-      await tester.dragUntilVisible(last,
-          find.byType(CustomScrollView).last, const Offset(0, -200));
-      await tester.drag(
-          find.byType(CustomScrollView).last, const Offset(0, -2000));
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tester.takeException(), isNull);
-      expect(tester.getRect(last).bottom, lessThanOrEqualTo(640 - 48));
-    });
-
-    testWidgets('landscape: the results clear a side nav bar',
-        (tester) async {
-      await _setView(tester, const Size(780, 360),
-          const FakeViewPadding(right: 48));
-      final s = await _makeStores();
-      await _pump(tester,
-          prefs: s.prefs, routeStore: s.routeStore, api: _MapApi());
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tester.takeException(), isNull);
-      final card = find.ancestor(
-          of: find.text('Public loop 0'), matching: find.byType(Card));
-      expect(tester.getRect(card).right, lessThanOrEqualTo(780 - 48));
-    });
-
-    // Explore sits in the Fitness hub's swiping pages. A drag that starts on
-    // the map pans the map; one that starts on the list switches the page.
-    testWidgets('inside a swiping hub the map keeps its drags and the sheet '
-        'swipes', (tester) async {
-      final s = await _makeStores();
-      final tabs = TabController(length: 2, vsync: const TestVSync());
-      addTearDown(tabs.dispose);
-      await tester.pumpWidget(MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: TabBarView(
-            controller: tabs,
-            children: [
-              ExploreRoutesScreen(
-                apiClient: _MapApi(),
-                routeStore: s.routeStore,
-                preferences: s.prefs,
-              ),
-              const Center(child: Text('next tab')),
-            ],
-          ),
-        ),
-      ));
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      final map = tester.widget<FlutterMap>(find.byType(FlutterMap));
-      final before = map.mapController!.camera.center;
-      final mapBox = tester.getRect(find.byType(FlutterMap));
-      // Above the sheet, which covers the lower half.
-      await tester.flingFrom(Offset(mapBox.center.dx, mapBox.top + 40),
-          const Offset(-400, 0), 1500);
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tabs.index, 0, reason: 'a drag on the map switched the page');
-      expect(map.mapController!.camera.center, isNot(before),
-          reason: 'the map did not pan');
-
-      await tester.fling(
-          find.text('Public loop 0'), const Offset(-400, 0), 1500);
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tabs.index, 1, reason: 'a drag on the list did not swipe');
-    });
-  });
-}
-
-/// A dozen public routes with long names, and nothing on the map.
-class _LayoutApi extends _BookmarkApi {
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async =>
-      after == null
-          ? cm.KeysetPage([
-              for (var i = 0; i < 12; i++)
-                cm.Route(
-                  id: 'L$i',
-                  name: 'Pocahontas Lakeview $i',
-                  waypoints: const [],
-                  distanceMetres: 8050,
-                  elevationGainMetres: 189,
-                  surface: 'trail',
-                  runCount: 14,
-                ),
-            ], null)
-          : const cm.KeysetPage(<cm.Route>[], null);
-
-  @override
-  Future<List<cm.DiscoverableRoutePin>> fetchDiscoverableRoutesInBbox({
-    required double minLng,
-    required double minLat,
-    required double maxLng,
-    required double maxLat,
-    int limit = 100,
-    String filter = 'popular',
-    List<double>? distMin,
-    List<double?>? distMax,
-  }) async =>
-      const [];
-}
-
-/// Explore as the Routes tab hosts it inside the phone shell: the hub's
-/// scope, the docked centre button over a bottom bar and the inset the shell
-/// publishes for it, a view row above the controls and the heatmaps.
-Widget _hostedExplore({
-  required Preferences prefs,
-  required LocalRouteStore routeStore,
-  required HubPrimaryActions actions,
-  required AppLocalizations l10n,
-  Locale? locale,
-  double textScale = 1,
-}) =>
-    MaterialApp(
-      theme: AppTheme.light,
-      locale: locale,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(textScale)),
-        child: child!,
-      ),
-      home: Scaffold(
-        body: DockedFabInset(
-          height: kDockedFabOverhang,
-          child: HubTabScope(
-            tab: 'routes',
-            actions: actions,
-            child: ExploreRoutesScreen(
-              apiClient: _LayoutApi(),
-              routeStore: routeStore,
-              preferences: prefs,
-              chrome: RoutesExploreChrome(
-                viewBar: const SizedBox(height: 56),
-                chips: [
-                  FilterChip(
-                    label: Text(l10n.fitnessRunsRoutes),
-                    selected: true,
-                    onSelected: (_) {},
-                  ),
-                  FilterChip(
-                    label: Text(l10n.runSurfaceTabSegments),
-                    selected: false,
-                    onSelected: (_) {},
-                  ),
-                ],
-              ),
-              mapButtons: [
-                MapControlButton(
-                  key: const Key('test-maps'),
-                  icon: Icons.local_fire_department_outlined,
-                  label: l10n.routesHeatmapTooltip,
-                  onPressed: () {},
-                ),
-                MapControlButton(
-                  icon: Icons.person_pin_circle_outlined,
-                  label: l10n.runHeatmapTitle,
-                  onPressed: () {},
-                ),
-              ],
-            ),
-          ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          key: const ValueKey('centre-button'),
-          onPressed: () {},
-          child: const Icon(Icons.play_arrow),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-        bottomNavigationBar: NavigationBar(
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.dashboard), label: 'Home'),
-            NavigationDestination(icon: Icon(Icons.route), label: 'Training'),
-            NavigationDestination(icon: SizedBox.shrink(), label: 'Run'),
-            NavigationDestination(icon: Icon(Icons.public), label: 'Social'),
-            NavigationDestination(icon: Icon(Icons.person), label: 'You'),
-          ],
-        ),
-      ),
-    );
-
-Rect _sheetRect(WidgetTester tester) => tester.getRect(find
-    .descendant(
-        of: find.byKey(const ValueKey('map-first-sheet')),
-        matching: find.byType(Material))
-    .first);
-
-void _layoutTests() {
-  // Owner report from a phone (Routes → Explore, "way too compact"): the
-  // heatmap tiles headed the sheet, the card's thumbnail slot cut the name,
-  // and one route showed, its facts under the docked centre button
-  // (decisions § 2609).
-  group('ExploreRoutesScreen — routes first', () {
-    testWidgets('on a phone the sheet opens on several whole routes, the '
-        'heatmaps float on the map, and a name keeps the card\'s width',
-        (tester) async {
-      await _setView(tester, const Size(412, 915),
-          const FakeViewPadding(top: 24, bottom: 24));
-      final s = await _makeStores();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_hostedExplore(
-        prefs: s.prefs,
-        routeStore: s.routeStore,
-        actions: actions,
-        l10n: lookupAppLocalizations(const Locale('en')),
-      ));
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      expect(tester.takeException(), isNull);
-
-      final sheet = _sheetRect(tester);
-      final centre = tester.getRect(find.byKey(const ValueKey('centre-button')));
-      final whole = [
-        for (final card in find.byType(Card).evaluate())
-          tester.getRect(find.byWidget(card.widget)),
-      ].where((r) => r.top >= sheet.top && r.bottom <= centre.top);
-      expect(whole.length, greaterThanOrEqualTo(2),
-          reason: 'at rest the sheet shows at least two whole routes above '
-              'the docked centre button');
-
-      final maps = find.byKey(const Key('test-maps'));
-      expect(
-          find.descendant(
-              of: find.byKey(const ValueKey('map-first-sheet')),
-              matching: maps),
-          findsNothing,
-          reason: 'the heatmaps are not the head of the list');
-      expect(tester.getRect(maps).bottom, lessThanOrEqualTo(sheet.top));
-
-      final title = find.text('Pocahontas Lakeview 0');
-      final paragraph = tester.renderObject<RenderParagraph>(title);
-      expect(paragraph.didExceedMaxLines, isFalse,
-          reason: 'the route\'s name is cut');
-      final card = find.ancestor(of: title, matching: find.byType(Card));
-      expect(tester.getRect(title).left - tester.getRect(card).left,
-          AppSpace.md,
-          reason: 'no thumbnail slot ahead of the name');
-      expect(find.textContaining(RegExp(r'14\sruns')), findsWidgets,
-          reason: 'the run count is said in words, not a bare number');
-    });
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('explore-list-pill')));
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-list-page')).evaluate().isNotEmpty,
+        describe: 'the list page');
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Nearest first'), findsOneWidget);
   });
 
-  // PR #1467 review: the Official badge, wrapped onto the line under the
-  // name, started about 8 dp in from the name and the facts line.
-  testWidgets('an Official badge on its own line sits flush with the name',
+  testWidgets('signed out, the map stays and the card is the way to sign in',
       (tester) async {
-    await _setView(tester, const Size(360, 780), FakeViewPadding.zero);
-    final s = await _makeStores();
-    // In the test font this name fills its line and the badge wraps.
-    const name = 'Loop MMMMMMMMMM';
-    await _pump(tester,
-        prefs: s.prefs, routeStore: s.routeStore, api: _OfficialApi(name));
+    await _pump(tester, _Api(signedIn: false));
     await tester.pump();
-    await tester.pump();
-    await tester.pump();
-    final title = tester.getRect(find.text(name));
-    final badge =
-        tester.getRect(find.byKey(const Key('provenance-badge-official')));
-    expect(badge.top, greaterThan(title.top + 16),
-        reason: 'the case under test: the badge starts the second line');
-    expect(badge.left, moreOrLessEquals(title.left, epsilon: 0.5));
+    expect(find.byKey(const ValueKey('explore-routes-map')), findsOneWidget);
+    expect(find.byKey(const ValueKey('explore-list-pill')), findsNothing);
+    expect(find.textContaining('Sign in'), findsWidgets);
   });
 
-  worstCaseTestWidgets('Routes → Explore scrolled to its last route',
-      (tester, locale) async {
-    final s = await _makeStores();
-    final actions = HubPrimaryActions();
-    addTearDown(actions.dispose);
-    await tester.pumpWidget(_hostedExplore(
-      prefs: s.prefs,
-      routeStore: s.routeStore,
-      actions: actions,
-      l10n: l10nFor(locale),
+  worstCaseTestWidgets('Explore routes with a card open', (tester, locale) async {
+    final prefs = await _prefs();
+    await tester.pumpWidget(worstCaseApp(
       locale: locale,
-      textScale: kWorstCaseTextScale,
+      home: _screen(_Api(pins: [_pin('a', _longName, official: true)]), prefs),
     ));
-    await tester.pumpAndSettle(const Duration(milliseconds: 400));
-    expectNoOverflow(tester, 'Explore at rest');
-
-    final list = find.byType(CustomScrollView).last;
-    final last = find.text('Pocahontas Lakeview 11');
-    await tester.dragUntilVisible(last, list, const Offset(0, -200));
-    await tester.drag(list, const Offset(0, -3000));
-    await tester.pumpAndSettle(const Duration(milliseconds: 400));
-    expectNoOverflow(tester, 'Explore at its end');
-
-    final card = find.ancestor(of: last, matching: find.byType(Card));
-    final bookmark = find.descendant(
-        of: card,
-        matching: find.byWidgetPredicate((w) => w is IconButton));
-    for (final target in [card, bookmark]) {
-      final rect = tester.getRect(target);
-      for (final fab in find.byType(FloatingActionButton).evaluate()) {
-        final fabRect = tester.getRect(find.byWidget(fab.widget));
-        expect(fabRect.overlaps(rect), isFalse,
-            reason: 'the last route at $rect sits under a floating button '
-                'at $fabRect');
-      }
-    }
-    final hit = tester.hitTestOnBinding(tester.getCenter(bookmark));
-    expect(hit.path.any((e) => e.target == tester.renderObject(bookmark)),
-        isTrue,
-        reason: 'a tap on the last route\'s bookmark lands on something '
-            'drawn over it');
+    final pin = find.byKey(const ValueKey('explore-pin-a'));
+    await pumpUntil(tester, () => pin.evaluate().isNotEmpty,
+        describe: 'the pin');
+    expectNoOverflow(tester, 'Explore routes at rest');
+    // On a 320 dp map at 2x the floating buttons may lie over the pin; the
+    // pin's own tap is what is under test.
+    tester.widget<GestureDetector>(pin).onTap!();
+    await pumpUntil(tester,
+        () => find.byKey(const ValueKey('explore-card-name')).evaluate().isNotEmpty,
+        describe: 'the card');
+    final name = tester.renderObject<RenderParagraph>(find.descendant(
+        of: find.byKey(const ValueKey('explore-card-name')),
+        matching: find.byType(RichText)));
+    expect(name.didExceedMaxLines, isFalse);
   });
-}
 
-/// One official route named [name]; it is not a park course's.
-class _OfficialApi extends _BookmarkApi {
-  _OfficialApi(this.name);
+  group('ExploreListCard at a raised text size', () {
+    test('the shape gives back the room the name grows into', () {
+      expect(ExploreListCard.thumbnailSideFor(1), ExploreListCard.thumbnailSize);
+      expect(ExploreListCard.thumbnailSideFor(0.85),
+          ExploreListCard.thumbnailSize);
+      expect(ExploreListCard.thumbnailSideFor(1.3),
+          closeTo(ExploreListCard.thumbnailSize / 1.3, 0.001));
+      expect(ExploreListCard.thumbnailSideFor(1.9),
+          greaterThanOrEqualTo(ExploreListCard.minThumbnailSize));
+      expect(ExploreListCard.thumbnailSideFor(2), isNull);
+    });
 
-  final String name;
-
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async =>
-      after == null
-          ? cm.KeysetPage([
-              cm.Route(
-                id: 'o1',
-                name: name,
-                waypoints: const [],
-                distanceMetres: 42195,
-                official: true,
-              ),
-            ], null)
-          : const cm.KeysetPage(<cm.Route>[], null);
-
-  @override
-  Future<Set<String>> fetchParkCourseRouteIds(Iterable<String> ids) async =>
-      {};
-}
-
-/// A signed-in viewer whose search answers are scripted per call: rows for a
-/// query, an error to throw next, and every query asked for.
-class _ScriptedApi extends _BookmarkApi {
-  _ScriptedApi({this.signedIn = true});
-
-  final bool signedIn;
-  final queries = <String?>[];
-  List<cm.Route> rows = [_route('r1', 'Morning loop')];
-  List<cm.Route> nearby = [_route('n1', 'Riverside 10K')];
-  Object? failNext;
-
-  @override
-  String? get userId => signedIn ? 'u1' : null;
-
-  @override
-  Future<cm.KeysetPage<cm.Route>> searchPublicRoutes({
-    String? query,
-    double? minDistanceM,
-    double? maxDistanceM,
-    String? surface,
-    List<String>? tags,
-    bool featuredOnly = false,
-    String sort = 'newest',
-    int limit = 50,
-    List<Object?>? after,
-  }) async {
-    if (after != null) return const cm.KeysetPage(<cm.Route>[], null);
-    queries.add(query);
-    final fail = failNext;
-    failNext = null;
-    if (fail != null) throw fail;
-    return cm.KeysetPage(rows, null);
-  }
-
-  @override
-  Future<List<cm.Route>> nearbyPublicRoutes({
-    required double lat,
-    required double lng,
-    double radiusM = 50000,
-    int limit = 50,
-  }) async =>
-      nearby;
-}
-
-/// Explore hosted in the Routes tab's shape: a view row, the Routes ·
-/// Segments chips with their icons, and a hub scope.
-Widget _scriptedHost({
-  required Preferences prefs,
-  required LocalRouteStore routeStore,
-  required ApiClient api,
-  required HubPrimaryActions actions,
-  Future<Position> Function()? locateFn,
-  VoidCallback? onBuildRoute,
-  double textScale = 1,
-  Locale locale = const Locale('en'),
-}) =>
-    MaterialApp(
-      theme: AppTheme.light,
-      locale: locale,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(textScale)),
-        child: child!,
-      ),
-      home: Builder(builder: (context) {
-        final l10n = AppLocalizations.of(context);
-        return Scaffold(
-          body: HubTabScope(
-            tab: 'routes',
-            actions: actions,
-            child: ExploreRoutesScreen(
-              apiClient: api,
-              routeStore: routeStore,
-              preferences: prefs,
-              locateFn: locateFn,
-              onBuildRoute: onBuildRoute,
-              chrome: RoutesExploreChrome(
-                viewBar: const SizedBox(height: 56),
-                chips: [
-                  for (final (label, icon, on) in [
-                    (l10n.fitnessRunsRoutes, Icons.route, true),
-                    (l10n.runSurfaceTabSegments, Icons.timeline, false),
-                  ])
-                    buildChoiceChip<bool>(
-                        context,
-                        ChoiceChipOption(value: on, label: label, icon: icon),
-                        true,
-                        (_) {}),
-                ],
+    Future<void> pumpCard(WidgetTester tester, double scale) =>
+        tester.pumpWidget(MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: MediaQuery(
+            data: MediaQueryData(
+                size: const Size(320, 640),
+                textScaler: TextScaler.linear(scale)),
+            child: Scaffold(
+              body: SizedBox(
+                width: 288,
+                child: ExploreListCard(
+                  name: 'Pocahontas Lakeview Loop',
+                  stats: '21.3 km · 189 m',
+                  thumbnail: const SizedBox(key: ValueKey('shape')),
+                  onTap: () {},
+                  trailing: IconButton(
+                    key: const ValueKey('star'),
+                    icon: const Icon(Icons.star_border),
+                    onPressed: () {},
+                  ),
+                ),
               ),
             ),
           ),
-        );
-      }),
-    );
+        ));
 
-void _critiqueTests() {
-  // UX critique of PR #1468 (reviews/ux-critic-mobile-training-explore.md).
-  group('ExploreRoutesScreen — UX critique', () {
-    Future<void> settle(WidgetTester tester) async {
-      for (var i = 0; i < 4; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-    }
-
-    final nearMe = find.byKey(const ValueKey('explore-near-me'));
-    final searchIcon = find.byKey(const Key('filter-bar-search'));
-    final filters = find.byKey(const Key('filter-bar-filters'));
-
-    // Finding 1 and 8: Near me is a labelled map button, and turning it on
-    // leaves the bar exactly as it was.
-    testWidgets('Near me is a labelled button on the map; turning it on moves '
-        'no chip or icon', (tester) async {
-      await _setView(tester, const Size(412, 915), FakeViewPadding.zero);
-      final s = await _makeStores();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-        prefs: s.prefs,
-        routeStore: s.routeStore,
-        api: _ScriptedApi(),
-        actions: actions,
-        locateFn: () async => _fix(37.54, -77.43),
-      ));
-      await settle(tester);
-      expect(
-          find.descendant(
-              of: find.byKey(const ValueKey('map-first-controls')),
-              matching: nearMe),
-          findsOneWidget);
-      expect(find.descendant(of: nearMe, matching: find.text('Near me')),
-          findsOneWidget);
-      expect(tester.getSize(nearMe).height,
-          greaterThanOrEqualTo(kMinInteractiveDimension));
-      Map<String, Rect> bar() => {
-            'routes': tester.getRect(find.widgetWithText(ChoiceChip, 'Routes')),
-            'segments':
-                tester.getRect(find.widgetWithText(ChoiceChip, 'Segments')),
-            'search': tester.getRect(searchIcon),
-            'filters': tester.getRect(filters),
-          };
-      final before = bar();
-      await tester.tap(nearMe);
-      await settle(tester);
-      expect(find.text('Riverside 10K'), findsOneWidget);
-      expect(bar(), before, reason: 'the bar does not reflow');
-      expect(
-          tester
-              .getSemantics(find.descendant(
-                  of: nearMe, matching: find.text('Near me')))
-              .hasFlag(SemanticsFlag.isToggled),
-          isTrue,
-          reason: 'heard as on');
-    });
-
-    for (final (size, scale) in [
-      (const Size(412, 915), 1.0),
-      (kWorstCasePhone, kWorstCaseTextScale),
-    ]) {
-      for (final locale in kWorstCaseLocales) {
-        testWidgets('Routes, Segments, search and Filters are all on screen at '
-            '${size.width.toInt()} dp, ${scale}x, $locale', (tester) async {
-          await _setView(tester, size, FakeViewPadding.zero);
-          final s = await _makeStores();
-          final actions = HubPrimaryActions();
-          addTearDown(actions.dispose);
-          await tester.pumpWidget(_scriptedHost(
-            prefs: s.prefs,
-            routeStore: s.routeStore,
-            api: _ScriptedApi(),
-            actions: actions,
-            textScale: scale,
-            locale: locale,
-          ));
-          await settle(tester);
-          expect(tester.takeException(), isNull);
-          final icon = tester.getRect(searchIcon);
-          final f = tester.getRect(filters);
-          expect(f.right, lessThanOrEqualTo(size.width));
-          expect(f.left, greaterThanOrEqualTo(icon.right - 0.5));
-          for (final chip in find.byType(ChoiceChip).evaluate()) {
-            final r = tester.getRect(find.byWidget(chip.widget));
-            expect(r.left, greaterThanOrEqualTo(0));
-            expect(r.right, lessThanOrEqualTo(size.width));
-            expect(r.overlaps(icon.expandToInclude(f)), isFalse,
-                reason: 'no chip is pushed off screen or under the icons');
-          }
-          for (final label in ['Routes', 'Segments']) {
-            final text = find.descendant(
-                of: find.byType(ChoiceChip), matching: find.byType(Text));
-            for (final t in text.evaluate()) {
-              final p = tester.renderObject<RenderParagraph>(
-                  find.byWidget(t.widget));
-              expect(p.didExceedMaxLines, isFalse, reason: '$label is whole');
-            }
-          }
-          expect(find.byIcon(Icons.timeline), findsOneWidget,
-              reason: 'Segments leads with its own glyph, not a blank');
-        });
-      }
-    }
-
-    // Finding 2: a failed refresh of the same search keeps the rows.
-    testWidgets('a refresh that fails offline keeps the rows and says so; a '
-        'new search clears them', (tester) async {
-      final s = await _makeStores();
-      final api = _ScriptedApi();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          actions: actions));
-      await settle(tester);
-      expect(find.text('Morning loop'), findsOneWidget);
-      api.failNext = TimeoutException('offline');
-      unawaited(tester
-          .state<RefreshIndicatorState>(find.byType(RefreshIndicator))
-          .show());
-      await tester.pump(const Duration(seconds: 2));
-      await settle(tester);
-      expect(find.text('Morning loop'), findsOneWidget,
-          reason: 'the rows on screen stay');
-      expect(find.text("You're offline. Showing what was last loaded."),
-          findsOneWidget);
-      await tester.pump(const Duration(seconds: 6));
-
-      api.rows = [_route('h1', 'Hill reps')];
-      await tester.tap(searchIcon);
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'hill');
-      await tester.pump(const Duration(milliseconds: 450));
-      await settle(tester);
-      expect(find.text('Morning loop'), findsNothing);
-      expect(find.text('Hill reps'), findsOneWidget);
-    });
-
-    // Finding 4: typing searches after a short pause; Search runs at once.
-    testWidgets('typing runs the search after a short pause, the keyboard\'s '
-        'Search at once', (tester) async {
-      final s = await _makeStores();
-      final api = _ScriptedApi();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          actions: actions));
-      await settle(tester);
-      expect(api.queries, [null]);
-      await tester.tap(searchIcon);
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'hil');
-      await tester.pump(const Duration(milliseconds: 200));
-      await tester.enterText(find.byType(TextField), 'hill');
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(api.queries, [null], reason: 'still typing');
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(api.queries, [null, 'hill'], reason: 'one search for the pause');
-      await tester.enterText(find.byType(TextField), 'river');
-      await tester.testTextInput.receiveAction(TextInputAction.search);
-      await tester.pump();
-      expect(api.queries.last, 'river');
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(api.queries, [null, 'hill', 'river'],
-          reason: 'Search ran it; the pause does not run it again');
-    });
-
-    // Finding 5: a live query keeps the chips in reach.
-    testWidgets('a live search keeps Routes and Segments on screen, under the '
-        'field', (tester) async {
-      final s = await _makeStores();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: _ScriptedApi(),
-          actions: actions));
-      await settle(tester);
-      await tester.tap(searchIcon);
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'hill');
-      await tester.pump(const Duration(milliseconds: 450));
-      await settle(tester);
-      final field = tester.getRect(find.byType(TextField));
-      final segments =
-          tester.getRect(find.widgetWithText(ChoiceChip, 'Segments'));
-      expect(segments.top, greaterThanOrEqualTo(field.bottom));
-      expect(actions.consumeBack('routes'), isTrue,
-          reason: 'Back closes the search first');
-      await settle(tester);
-      expect(find.byType(TextField), findsNothing);
-    });
-
-    // Finding 3: no Retry that can never succeed.
-    testWidgets('signed out, the way forward is Sign in', (tester) async {
-      final s = await _makeStores();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: _ScriptedApi(signedIn: false),
-          actions: actions));
-      await settle(tester);
-      expect(find.text('Sign in to explore routes others have shared.'),
-          findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
-      expect(find.text('Retry'), findsNothing);
-    });
-
-    testWidgets('location refused for good offers Open settings, not Retry',
+    testWidgets('at 1x the shape and the star sit beside the name',
         (tester) async {
-      final s = await _makeStores();
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: _ScriptedApi(),
-          actions: actions,
-          locateFn: () async =>
-              throw const LocationPermanentlyDeniedException()));
-      await settle(tester);
-      await tester.tap(nearMe);
-      await settle(tester);
-      expect(
-          find.text('Location is off for this app. Turn it on in Settings to '
-              'see routes near you.'),
-          findsOneWidget);
-      expect(find.text('Open settings'), findsOneWidget);
-      expect(find.text('Retry'), findsNothing);
+      await pumpCard(tester, 1);
+      expect(find.byKey(const ValueKey('shape')), findsOneWidget);
+      final name = tester.getRect(find.text('Pocahontas Lakeview Loop'));
+      final star = tester.getRect(find.byKey(const ValueKey('star')));
+      expect(star.left, greaterThan(name.right));
     });
 
-    // Finding 7: each empty state says why, with its one way forward.
-    testWidgets('each empty state names its cause and its one action',
+    testWidgets('at 2x the shape goes and the star moves under the name',
         (tester) async {
-      final s = await _makeStores();
-      final api = _ScriptedApi()..rows = const [];
-      api.nearby = const [];
-      var built = 0;
-      final actions = HubPrimaryActions();
-      addTearDown(actions.dispose);
-      await tester.pumpWidget(_scriptedHost(
-          prefs: s.prefs,
-          routeStore: s.routeStore,
-          api: api,
-          actions: actions,
-          onBuildRoute: () => built++,
-          locateFn: () async => _fix(37.54, -77.43)));
-      await settle(tester);
-      expect(find.text('No one has shared a route yet.'), findsOneWidget);
-      await tester.tap(find.text('Build a route'));
-      expect(built, 1);
-
-      await tester.tap(filters);
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Featured'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
-      expect(find.text('No routes match these filters.'), findsOneWidget);
-      await tester.tap(find.text('Clear filters'));
-      await settle(tester);
-      expect(find.text('No one has shared a route yet.'), findsOneWidget);
-
-      await tester.tap(nearMe);
-      await settle(tester);
-      expect(find.text('No public routes within 50 km of you yet.'),
-          findsOneWidget);
-      await tester.tap(find.text('Search everywhere'));
-      await settle(tester);
-      expect(find.text('No one has shared a route yet.'), findsOneWidget);
-
-      await tester.tap(searchIcon);
-      await tester.pump();
-      await tester.enterText(find.byType(TextField), 'zzz');
-      await tester.pump(const Duration(milliseconds: 450));
-      await settle(tester);
-      expect(find.text('No routes match your search'), findsOneWidget);
+      await pumpCard(tester, 2);
+      expect(find.byKey(const ValueKey('shape')), findsNothing);
+      final name = tester.getRect(find.text('Pocahontas Lakeview Loop'));
+      final star = tester.getRect(find.byKey(const ValueKey('star')));
+      expect(star.top, greaterThanOrEqualTo(name.bottom));
     });
   });
 }
+
+/// The sort chip's English label, as the list page shows it.
+String exploreSortLabelForTest(ExploreSort sort) =>
+    exploreSortLabel(lookupAppLocalizations(const Locale('en')), sort);

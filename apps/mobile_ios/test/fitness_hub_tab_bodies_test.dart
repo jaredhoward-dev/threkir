@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui_kit/ui_kit.dart'
-    show AppSearchField, FilterBar, PageBarTitle;
+    show AppSearchField, FilterBar, MapFirstPage, PageBarTitle;
 
 import '../lib/local_food_store.dart';
 import '../lib/local_gym_store.dart';
@@ -131,17 +131,15 @@ void main() {
       'Routes → Explore → Segments',
     ]) {
       if (label.startsWith('Routes →')) {
-        final chip = find.widgetWithText(ChoiceChip, label.split(' → ').last);
-        if (label.endsWith('→ Routes')) {
-          final explore = find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore'));
-          await tester.ensureVisible(explore);
-          await tester.tap(explore);
-          await tester.pump();
-        }
-        // The chip line scrolls sideways at 2x; the chip must be reachable.
-        await tester.ensureVisible(chip);
-        await tester.tap(chip);
+        // One menu switches Routes' views (decisions § 2611).
+        final view = label.endsWith('→ Routes') ? 'routes' : 'segments';
+        final menu =
+            find.byKey(const ValueKey('routes-view-menu')).hitTestable().first;
+        await tester.ensureVisible(menu);
+        await tester.tap(menu);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.byKey(ValueKey('routes-view-menu-$view')));
         await tester.pump();
         await tester.pump(const Duration(seconds: 1));
       } else {
@@ -252,22 +250,29 @@ void main() {
     expect(find.byType(FilterBar), findsOneWidget);
   });
 
-  // Routes is Mine · Explore: the view row is a FilterBar of its own over
-  // the view's FilterBar, and nothing else.
-  testWidgets('Routes is the view row over the view\'s own FilterBar',
-      (tester) async {
+  // Routes' views are one menu (decisions § 2611): over Mine it heads a
+  // FilterBar of its own above Mine's, and Explore's map carries it with no
+  // control row at all.
+  testWidgets('Routes is the view menu over Mine\'s FilterBar, and on '
+      'Explore\'s map', (tester) async {
     await pumpHub(tester);
     await openTab(tester, 'Routes');
     expect(find.byKey(const ValueKey('routes-view-bar')), findsOneWidget);
     expect(find.byType(FilterBar), findsNWidgets(2));
-    final explore = find.descendant(
-          of: find.byKey(const Key('view-switch')), matching: find.text('Explore'));
-    await tester.ensureVisible(explore);
-    await tester.tap(explore);
+    final menu =
+        find.byKey(const ValueKey('routes-view-menu')).hitTestable().first;
+    await tester.ensureVisible(menu);
+    await tester.tap(menu);
     await tester.pump();
-    expect(find.byKey(const ValueKey('explore-routes-filter-bar')),
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('routes-view-menu-routes')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(
+        find.descendant(
+            of: find.byType(MapFirstPage),
+            matching: find.byKey(const ValueKey('routes-view-menu'))),
         findsOneWidget);
-    expect(find.byType(FilterBar), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 }

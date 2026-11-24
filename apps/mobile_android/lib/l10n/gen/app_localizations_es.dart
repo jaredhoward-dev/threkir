@@ -23003,6 +23003,37 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String parksListButton(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: 'Lista · $n parques',
+      one: 'Lista · $n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get parksHowItWorks => 'Cómo funcionan los recorridos de parques';
+
+  @override
+  String get parksMapLabel => 'Mapa de recorridos de parques';
+
+  @override
+  String parksMapMarkerLabel(String park, String count) {
+    return '$park, $count';
+  }
+
+  @override
+  String get parksAboutPark => 'Sobre este parque';
+
+  @override
+  String get parksStartHere => 'Salida aquí';
+
+  @override
+  String get parksBoard => 'Clasificación';
+
+  @override
   String get eventCourseLinesMapBoth =>
       'Mapa de las líneas de salida y meta del recorrido';
 
@@ -24432,4 +24463,106 @@ class AppLocalizationsEs extends AppLocalizations {
   String runCourseCheckpointPassedLabel(int number) {
     return 'Punto de control $number, superado';
   }
+
+  @override
+  String exploreMapViewMenuLabel(String view) {
+    return '$view, cambiar de vista';
+  }
+
+  @override
+  String get exploreMapViewMine => 'Mis rutas';
+
+  @override
+  String get exploreMapViewRoutes => 'Explorar rutas';
+
+  @override
+  String get exploreMapViewSegments => 'Explorar segmentos';
+
+  @override
+  String get exploreMapBackToMap => 'Volver al mapa';
+
+  @override
+  String exploreMapListRoutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count rutas',
+      one: '$count ruta',
+    );
+    return 'Lista · $_temp0';
+  }
+
+  @override
+  String exploreMapListSegments(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count segmentos',
+      one: '$count segmento',
+    );
+    return 'Lista · $_temp0';
+  }
+
+  @override
+  String get exploreMapListRoutesTitle => 'Rutas en el mapa';
+
+  @override
+  String get exploreMapListSegmentsTitle => 'Segmentos en el mapa';
+
+  @override
+  String get exploreMapListSearchLabel => 'Buscar en esta lista';
+
+  @override
+  String get exploreMapSortLabel => 'Ordenar';
+
+  @override
+  String get exploreMapSortNearest => 'Más cercanas primero';
+
+  @override
+  String get exploreMapSortName => 'A–Z';
+
+  @override
+  String get exploreMapOfficialCourse => 'Recorrido oficial';
+
+  @override
+  String get exploreMapWhichRoute => '¿Qué ruta?';
+
+  @override
+  String get exploreMapWhichSegment => '¿Qué segmento?';
+
+  @override
+  String get exploreMapEmptyRoutes => 'No hay rutas aquí';
+
+  @override
+  String get exploreMapEmptyRoutesHint =>
+      'Mueve el mapa o aléjalo para ver más.';
+
+  @override
+  String get exploreMapEmptySegments => 'No hay segmentos aquí';
+
+  @override
+  String get exploreMapZoomOut => 'Alejar';
+
+  @override
+  String exploreMapNearest(String name) {
+    return 'La más cercana: $name';
+  }
+
+  @override
+  String get exploreMapLoadFailed =>
+      'No se pudieron cargar las rutas del mapa.';
+
+  @override
+  String get exploreMapDetails => 'Detalles';
+
+  @override
+  String get exploreMapRunThisRoute => 'Correr esta ruta';
+
+  @override
+  String get exploreMapRunFailed =>
+      'No se pudo cargar esta ruta. Comprueba tu conexión e inténtalo de nuevo.';
+
+  @override
+  String get exploreMapRunRecording =>
+      'Termina primero la carrera que estás grabando y luego carga esta ruta.';
 }

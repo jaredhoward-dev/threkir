@@ -140,11 +140,15 @@ void main() {
         ),
     ]);
     await scrollToEnd(tester);
-    final stars = find.byIcon(Icons.star_border);
-    expect(stars, findsWidgets);
+    // Scoped to the last route's card: the Starred filter above the list
+    // draws the same glyph.
+    final stars = find.descendant(
+        of: find.byKey(const ValueKey('mine-route-r11')),
+        matching: find.byIcon(Icons.star_border));
+    expect(stars, findsOneWidget);
     expectTappable(
         tester,
-        find.ancestor(of: stars.last, matching: find.byType(IconButton)),
+        find.ancestor(of: stars, matching: find.byType(IconButton)),
         'the last route\'s star');
     expectClearOfFabs(tester, find.byType(Card).last, 'the last route card');
   });

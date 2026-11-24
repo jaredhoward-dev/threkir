@@ -1,0 +1,79 @@
+{
+ "_comment": "Parks on a map (park_map pair): where a park's marker sits and which markers a map view holds, read by apps/web/src/lib/parks/park_map.test.ts and apps/mobile_android/test/park_map_test.dart. A null lat or lng stands for a missing or non-finite one. Points compare to 1e-9 degrees.",
+ "markerCases": [
+  {
+   "name": "a park with a centroid sits on it, whatever its courses",
+   "centroid": { "lat": 37.37, "lng": -77.57 },
+   "lines": [[{ "lat": 37.0, "lng": -77.0 }, { "lat": 37.2, "lng": -77.2 }]],
+   "point": { "lat": 37.37, "lng": -77.57 }
+  },
+  {
+   "name": "with no centroid, the middle of the box round every course line",
+   "centroid": null,
+   "lines": [
+    [{ "lat": 37.0, "lng": -77.0 }, { "lat": 37.2, "lng": -77.1 }],
+    [{ "lat": 36.9, "lng": -77.4 }, { "lat": 37.1, "lng": -77.2 }]
+   ],
+   "point": { "lat": 37.05, "lng": -77.2 }
+  },
+  {
+   "name": "a centroid missing a half falls back to the courses",
+   "centroid": { "lat": 37.5, "lng": null },
+   "lines": [[{ "lat": 10.0, "lng": 20.0 }, { "lat": 12.0, "lng": 22.0 }]],
+   "point": { "lat": 11.0, "lng": 21.0 }
+  },
+  {
+   "name": "a centroid off the globe falls back to the courses",
+   "centroid": { "lat": 95.0, "lng": 10.0 },
+   "lines": [[{ "lat": 1.0, "lng": 1.0 }, { "lat": 3.0, "lng": 3.0 }]],
+   "point": { "lat": 2.0, "lng": 2.0 }
+  },
+  {
+   "name": "unreadable course points are skipped",
+   "centroid": null,
+   "lines": [[{ "lat": null, "lng": 5.0 }, { "lat": 4.0, "lng": 6.0 }, { "lat": 2.0, "lng": 8.0 }]],
+   "point": { "lat": 3.0, "lng": 7.0 }
+  },
+  {
+   "name": "no centroid and no course line puts the park nowhere",
+   "centroid": null,
+   "lines": [],
+   "point": null
+  },
+  {
+   "name": "no centroid and only unreadable points puts the park nowhere",
+   "centroid": { "lat": null, "lng": null },
+   "lines": [[{ "lat": null, "lng": 1.0 }]],
+   "point": null
+  }
+ ],
+ "viewCases": [
+  {
+   "name": "counts the markers inside the view, edges included",
+   "bounds": { "south": 36.0, "west": -78.0, "north": 38.0, "east": -76.0 },
+   "points": [
+    { "lat": 37.0, "lng": -77.0 },
+    { "lat": 38.0, "lng": -76.0 },
+    { "lat": 39.0, "lng": -77.0 },
+    { "lat": 37.0, "lng": -75.0 }
+   ],
+   "inView": [true, true, false, false]
+  },
+  {
+   "name": "a view across the antimeridian holds both sides of it",
+   "bounds": { "south": -10.0, "west": 170.0, "north": 10.0, "east": -170.0 },
+   "points": [
+    { "lat": 0.0, "lng": 175.0 },
+    { "lat": 0.0, "lng": -175.0 },
+    { "lat": 0.0, "lng": 0.0 }
+   ],
+   "inView": [true, true, false]
+  },
+  {
+   "name": "a park with no point is never in view",
+   "bounds": { "south": -90.0, "west": -180.0, "north": 90.0, "east": 180.0 },
+   "points": [null, { "lat": 0.0, "lng": 0.0 }],
+   "inView": [false, true]
+  }
+ ]
+}
