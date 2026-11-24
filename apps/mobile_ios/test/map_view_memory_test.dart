@@ -38,6 +38,15 @@ Position _pos(double lat, double lng) => Position(
 
 const _key = 'test_map_view';
 
+/// Records every save, so a test can wait on one landing.
+class _RecordingMemory extends MapViewMemory {
+  _RecordingMemory() : super(_key);
+  final List<MapView> saved = [];
+
+  @override
+  Future<void> save(MapView view) async => saved.add(view);
+}
+
 void main() {
   setUpAll(() {
     dotenv.loadFromString(isOptional: true);
@@ -145,6 +154,7 @@ void main() {
       WidgetTester tester, {
       Stream<Position> Function()? fixes,
       LatLng? lastRun,
+      MapViewMemory memory = const MapViewMemory(_key),
     }) async {
       final controller = MapController();
       await tester.pumpWidget(MaterialApp(
@@ -158,7 +168,7 @@ void main() {
             onTap: (_) {},
             quietFixes: fixes ?? () => const Stream.empty(),
             lastRunStart: lastRun,
-            memory: const MapViewMemory(_key),
+            memory: memory,
           ),
         ),
       ));
@@ -181,7 +191,10 @@ void main() {
 
     testWidgets('with nothing known it opens on the world', (tester) async {
       final map = await pump(tester);
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      final state =
+          tester.state<ExploreRoutesMapState>(find.byType(ExploreRoutesMap));
+      await pumpUntil(tester, () => state.recalled,
+          describe: 'the remembered view to be read');
       await tester.pump();
       expect(map.camera.zoom, 2);
     });
@@ -195,7 +208,6 @@ void main() {
     testWidgets('where it was last left beats the newest run', (tester) async {
       SharedPreferences.setMockInitialValues({_key: '51.5,-0.12,10'});
       final map = await pump(tester, lastRun: const LatLng(37.5, -77.4));
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await settleOn(tester, map, const LatLng(51.5, -0.12), 10);
     });
 
@@ -205,7 +217,6 @@ void main() {
       addTearDown(fixes.close);
       final map = await pump(tester,
           fixes: () => fixes.stream, lastRun: const LatLng(37.5, -77.4));
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await settleOn(tester, map, const LatLng(51.5, -0.12), 10);
       fixes.add(_pos(40.7, -74.0));
       await settleOn(tester, map, const LatLng(40.7, -74.0), 12);
@@ -227,12 +238,19 @@ void main() {
     });
 
     testWidgets('remembers where the runner left it', (tester) async {
-      final map = await pump(tester);
+      final memory = _RecordingMemory();
+      final map = await pump(tester, memory: memory);
+      final state =
+          tester.state<ExploreRoutesMapState>(find.byType(ExploreRoutesMap));
+      await pumpUntil(tester, () => state.recalled,
+          describe: 'the remembered view to be read');
       map.move(const LatLng(35.0, 139.0), 11);
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-      expect(await tester.runAsync(() => const MapViewMemory(_key).load()),
-          (lat: 35.0, lng: 139.0, zoom: 11.0));
+      await pumpUntil(tester, () => memory.saved.isNotEmpty,
+          describe: 'the settled view to be saved');
+      final last = memory.saved.last;
+      expect(last.lat, closeTo(35.0, 1e-6));
+      expect(last.lng, closeTo(139.0, 1e-6));
+      expect(last.zoom, 11);
     });
   });
 }

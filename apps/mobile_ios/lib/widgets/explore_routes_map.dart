@@ -116,6 +116,10 @@ class ExploreRoutesMapState extends State<ExploreRoutesMap> {
   /// Whether the camera has had a move since the runner last touched it.
   bool get moved => _moved;
 
+  /// Whether the remembered view has been read.
+  @visibleForTesting
+  bool get recalled => _recalled;
+
   /// A move the runner asked for through the page (Near me, a search pick,
   /// Zoom out): the map stops moving itself to a better opening view.
   void claim() => _moved = true;
