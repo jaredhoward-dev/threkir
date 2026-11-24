@@ -77,7 +77,7 @@ void _pushPark(BuildContext context, ApiClient? api, ParkListing listing) =>
 class ParksScreen extends StatefulWidget {
   final ApiClient? api;
 
-  /// The search the index opens on, carried from Races & courses' "See all".
+  /// The search the index opens on, carried from Races & courses' Map.
   final String initialQuery;
 
   /// Test seam for Near me; production asks for a browse fix.

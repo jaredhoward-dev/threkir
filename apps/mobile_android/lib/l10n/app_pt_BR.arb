@@ -6236,7 +6236,7 @@
   "racesAnyTimeNoTimeYet": "Ainda não há tempos nesta temporada. O seu pode ser o primeiro.",
   "racesAnyTimeAway": "A {distance}",
   "racesAnyTimeNoMatch": "Nenhum percurso corresponde a “{query}”",
-  "racesAnyTimeSeeAll": "{n, plural, =1{Ver o percurso} other{Ver os {n} percursos}}",
+  "racesAnyTimeMap": "Mapa",
   "racesAnyTimeFastestFailed": "Não foi possível carregar os tempos mais rápidos desta temporada.",
   "reportReasonOrganiserDispute": "Se passa pela minha organização ou a copia",
   "reportReasonOrganiserDisputeHint": "Para donos e administradores de um clube verificado. Uma pessoa da análise decide; nada é ocultado automaticamente.",

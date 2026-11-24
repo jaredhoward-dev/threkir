@@ -4773,7 +4773,7 @@ export const messages = {
 	"races.placeLookupFailed": "現在、場所を検索できません。公園とコースは引き続き名前で探せます。",
 	"races.courseSearchStatus": "{n, plural, =0 {公園やコースは見つかりません。} other {公園・コースが#件見つかりました。}}",
 	"races.placeSuggestionsStatus": "{n, plural, other {周辺を探せる場所が#件あります。}}",
-	"races.anyTimeSeeAll": "{n, plural, =1 {公園コースを見る} other {#件の公園コースをすべて見る}}",
+	"races.anyTimeMap": "地図",
 	"races.anyTimeFastestFailed": "今シーズンの最速タイムを読み込めませんでした。",
 	"races.searchPlaceholder": "名前でレースを検索…",
 	"races.searchAllPlaceholder": "レース・公園・公園コースを検索…",

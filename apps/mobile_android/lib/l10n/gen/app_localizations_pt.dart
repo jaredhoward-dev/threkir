@@ -16131,15 +16131,7 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String racesAnyTimeSeeAll(int n) {
-    String _temp0 = intl.Intl.pluralLogic(
-      n,
-      locale: localeName,
-      other: 'Ver os $n percursos',
-      one: 'Ver o percurso',
-    );
-    return '$_temp0';
-  }
+  String get racesAnyTimeMap => 'Mapa';
 
   @override
   String get racesAnyTimeFastestFailed =>
@@ -40702,15 +40694,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   }
 
   @override
-  String racesAnyTimeSeeAll(int n) {
-    String _temp0 = intl.Intl.pluralLogic(
-      n,
-      locale: localeName,
-      other: 'Ver os $n percursos',
-      one: 'Ver o percurso',
-    );
-    return '$_temp0';
-  }
+  String get racesAnyTimeMap => 'Mapa';
 
   @override
   String get racesAnyTimeFastestFailed =>

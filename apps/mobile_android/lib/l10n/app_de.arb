@@ -6236,7 +6236,7 @@
   "racesAnyTimeNoTimeYet": "In dieser Saison noch keine Zeit. Deine könnte die erste sein.",
   "racesAnyTimeAway": "{distance} entfernt",
   "racesAnyTimeNoMatch": "Keine Strecken passen zu „{query}“",
-  "racesAnyTimeSeeAll": "{n, plural, =1{Strecke ansehen} other{Alle {n} Strecken ansehen}}",
+  "racesAnyTimeMap": "Karte",
   "racesAnyTimeFastestFailed": "Die schnellsten Zeiten dieser Saison konnten nicht geladen werden.",
   "reportReasonOrganiserDispute": "Ahmt meine Organisation nach oder kopiert sie",
   "reportReasonOrganiserDisputeHint": "Für Eigentümer und Admins eines verifizierten Clubs. Ein Prüfer entscheidet; nichts wird automatisch ausgeblendet.",

@@ -190,6 +190,10 @@ void main() {
     await initializeTestSupabase();
   });
 
+  // The map remembers its last view in SharedPreferences (decisions § 2613);
+  // every test opens on a fresh phone.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('the map is the page: the view menu, Search and Filters on its '
       'top edge, compact Near me, and the List pill counting the routes in '
       'view', (tester) async {

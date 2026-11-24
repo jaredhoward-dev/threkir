@@ -4791,7 +4791,7 @@ export const en = {
 	"races.placeLookupFailed": "Couldn't look up places right now. Parks and courses are still found by name.",
 	"races.courseSearchStatus": "{n, plural, =0 {No parks or courses found.} one {# park or course found.} other {# parks and courses found.}}",
 	"races.placeSuggestionsStatus": "{n, plural, one {# place to search near.} other {# places to search near.}}",
-	"races.anyTimeSeeAll": "{n, plural, =1 {See the course} other {See all # courses}}",
+	"races.anyTimeMap": "Map",
 	"races.anyTimeFastestFailed": "Couldn't load this season's fastest times.",
 	"races.searchPlaceholder": "Search races by name…",
 	"races.searchAllPlaceholder": "Search races, parks and courses…",

@@ -281,16 +281,9 @@
 	const orderedCourses = $derived(allHitCourses.slice(0, anyTimeLimit));
 	const anyTimeCount = $derived(anyTimeParks.length + orderedCourses.length);
 
-	// The way to the full index, only when the list above is cut short; the
-	// Courses view lists everything and has none (issue #1374). It counts the
-	// courses the cut list stands for.
-	const anyTimeTruncated = $derived(
-		allParks.length > anyTimeParks.length || allHitCourses.length > orderedCourses.length,
-	);
-	const anyTimeCourseTotal = $derived(
-		allParks.reduce((n, p) => n + p.park.length, 0) + allHitCourses.length,
-	);
-	const seeAllHref = $derived(courseQuery.trim() ? `/parks?q=${encodeURIComponent(courseQuery.trim())}` : '/parks');
+	// The way to the parks map, whenever there is a park to put on it: a cut
+	// list and a whole one alike (decisions § 2613).
+	const parksMapHref = $derived(courseQuery.trim() ? `/parks?q=${encodeURIComponent(courseQuery.trim())}` : '/parks');
 
 	async function loadCourses() {
 		coursesLoading = true;
@@ -700,10 +693,10 @@
 			<div class="section-head">
 				<div class="section-title-row">
 					<h2 id="races-any-time-heading">{m('races.sectionAnyTime')}</h2>
-					{#if anyTimeTruncated && !coursesLoading && !coursesFailed}
-						<a class="see-all" href={seeAllHref} data-testid="races-any-time-all">
-							{m('races.anyTimeSeeAll', { n: anyTimeCourseTotal })}
-							<span class="material-symbols" aria-hidden="true">arrow_forward</span>
+					{#if courses.length > 0 && !coursesLoading && !coursesFailed}
+						<a class="see-all" href={parksMapHref} aria-label={m('parks.mapLabel')} data-testid="races-any-time-map">
+							<span class="material-symbols" aria-hidden="true">map</span>
+							{m('races.anyTimeMap')}
 						</a>
 					{/if}
 				</div>

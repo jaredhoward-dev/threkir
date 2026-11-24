@@ -4778,7 +4778,7 @@ export const messages = {
 	"races.placeLookupFailed": "Impossible de rechercher des lieux pour le moment. Les parcs et parcours restent trouvables par leur nom.",
 	"races.courseSearchStatus": "{n, plural, =0 {Aucun parc ni parcours trouvé.} one {# parc ou parcours trouvé.} other {# parcs et parcours trouvés.}}",
 	"races.placeSuggestionsStatus": "{n, plural, one {# lieu autour duquel chercher.} other {# lieux autour desquels chercher.}}",
-	"races.anyTimeSeeAll": "{n, plural, =1 {Voir le parcours} other {Voir les # parcours}}",
+	"races.anyTimeMap": "Carte",
 	"races.anyTimeFastestFailed": "Impossible de charger les meilleurs temps de cette saison.",
 	"races.searchPlaceholder": "Rechercher des épreuves par nom…",
 	"races.searchAllPlaceholder": "Rechercher des épreuves, parcs et parcours…",

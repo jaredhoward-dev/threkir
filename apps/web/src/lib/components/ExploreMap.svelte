@@ -4,7 +4,9 @@
 	// lines the page hands it. It owns no data. A tap reports every pin or line
 	// under the finger through `onpick`, so the page can open the one it hit or
 	// ask "Which route?" when several overlap; a small cluster reports its
-	// routes the same way and a big one zooms in.
+	// routes the same way and a big one zooms in. It opens on the best place it
+	// knows and moves to a better one as it arrives, until the reader moves it
+	// (decisions § 2613, `map_view_memory.ts`).
 	import type * as GeoJSON from 'geojson';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import maplibregl from '#lib/routes/maplibre.ts';
@@ -22,6 +24,7 @@
 	import { hasAcceptedConsent } from '#lib/settings/consent.svelte.ts';
 	import { m } from '#lib/i18n/store.svelte.ts';
 	import type { ExploreLine, ExplorePin, LatLng, ViewBounds } from '#lib/routes/explore_viewport.ts';
+	import { loadMapView, opensOn, quietFix, saveMapView, type MapOpening } from '#lib/routes/map_view_memory.ts';
 
 	const PUBLIC_MAPTILER_KEY = PUBLIC_MAPTILER_KEY_ENV ?? '';
 
@@ -32,10 +35,17 @@
 		label: string;
 		onmove: (bounds: ViewBounds, center: LatLng) => void;
 		onpick: (ids: string[]) => void;
+		/// The browser-storage key this map remembers its last view under. A
+		/// map with one also opens on the reader when location is already
+		/// granted; a map without one opens on the world for the page to frame.
+		memoryKey?: string;
 		testid?: string;
 	}
 
-	let { pins, lines = [], selectedId = null, label, onmove, onpick, testid }: Props = $props();
+	let { pins, lines = [], selectedId = null, label, onmove, onpick, memoryKey, testid }: Props = $props();
+
+	let openedOn: MapOpening = 'world';
+	let touched = false;
 
 	/// A cluster this small opens as a "Which route?" list; a bigger one zooms in.
 	const PICK_CLUSTER_MAX = 6;
@@ -87,6 +97,7 @@
 		if (!map) return;
 		const b = map.getBounds();
 		const c = map.getCenter();
+		if (memoryKey) saveMapView(memoryKey, { lat: c.lat, lng: c.lng, zoom: map.getZoom() });
 		onmove({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }, { lat: c.lat, lng: c.lng });
 	}
 
@@ -107,11 +118,25 @@
 
 	function startMap() {
 		if (map || !mapEl) return;
+		const remembered = memoryKey ? loadMapView(memoryKey) : null;
+		if (remembered) openedOn = 'remembered';
 		map = new maplibregl.Map({
 			container: mapEl,
 			style: mapStyleUrlFromEnv(PUBLIC_MAPTILER_KEY, prefersDark),
-			center: [0, 30],
-			zoom: 2,
+			center: remembered ? [remembered.lng, remembered.lat] : [0, 30],
+			zoom: remembered ? remembered.zoom : 2,
+		});
+		// A drag, pinch, wheel or keyboard move carries the DOM event that
+		// caused it; a move this map or the page makes does not.
+		map.on('movestart', (e) => {
+			if ((e as { originalEvent?: unknown }).originalEvent) touched = true;
+		});
+		// Only a map that remembers its view opens on the reader: one that
+		// frames what it shows (Explore segments) keeps that framing.
+		if (memoryKey) void quietFix().then((at) => {
+			if (!at || !map || !opensOn(openedOn, 'here', touched)) return;
+			openedOn = 'here';
+			map.jumpTo({ center: [at.lng, at.lat], zoom: 12 });
 		});
 		stopResize = watchMapResize(mapEl, map);
 		if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -234,16 +259,19 @@
 	}
 
 	export function zoomOut() {
+		touched = true;
 		map?.easeTo({ zoom: Math.max(1, map.getZoom() - 2) });
 	}
 
 	export function flyTo(at: LatLng, zoom = 13) {
+		touched = true;
 		map?.flyTo({ center: [at.lng, at.lat], zoom });
 	}
 
 	/// Frames a line, leaving room at the bottom for the card over the map.
 	export function fitLine(coords: [number, number][]) {
 		if (!map || coords.length === 0) return;
+		touched = true;
 		const bounds = new maplibregl.LngLatBounds(coords[0], coords[0]);
 		for (const c of coords) bounds.extend(c);
 		map.fitBounds(bounds, { padding: { top: 72, bottom: 220, left: 40, right: 40 }, maxZoom: 15 });

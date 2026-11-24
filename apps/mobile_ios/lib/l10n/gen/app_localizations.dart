@@ -25185,11 +25185,11 @@ abstract class AppLocalizations {
   /// **'No courses match “{query}”'**
   String racesAnyTimeNoMatch(String query);
 
-  /// Run any time heading action when the list is cut short: opens the full park course index. n is how many courses match. Mirrors web races.anyTimeSeeAll
+  /// Run any time heading action, shown whenever any park is listed: opens the park courses map (every park as a pin, with its own list). Read aloud as parksMapLabel. Mirrors web races.anyTimeMap
   ///
   /// In en, this message translates to:
-  /// **'{n, plural, =1{See the course} other{See all {n} courses}}'**
-  String racesAnyTimeSeeAll(int n);
+  /// **'Map'**
+  String get racesAnyTimeMap;
 
   /// Shown above the park courses when this season's fastest times failed to load; the courses still list. Mirrors web races.anyTimeFastestFailed
   ///

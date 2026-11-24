@@ -4778,7 +4778,7 @@ export const messages = {
 	"races.placeLookupFailed": "Orte können gerade nicht gesucht werden. Parks und Strecken werden weiter nach Namen gefunden.",
 	"races.courseSearchStatus": "{n, plural, =0 {Keine Parks oder Strecken gefunden.} one {# Park oder Strecke gefunden.} other {# Parks und Strecken gefunden.}}",
 	"races.placeSuggestionsStatus": "{n, plural, one {# Ort zur Umkreissuche.} other {# Orte zur Umkreissuche.}}",
-	"races.anyTimeSeeAll": "{n, plural, =1 {Strecke ansehen} other {Alle # Strecken ansehen}}",
+	"races.anyTimeMap": "Karte",
 	"races.anyTimeFastestFailed": "Die schnellsten Zeiten dieser Saison konnten nicht geladen werden.",
 	"races.searchPlaceholder": "Rennen nach Namen suchen…",
 	"races.searchAllPlaceholder": "Rennen, Parks und Strecken suchen…",

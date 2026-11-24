@@ -92,6 +92,10 @@ class ExploreRoutesScreen extends StatefulWidget {
   /// get [locateForBrowse].
   final Future<Position> Function()? locateFn;
 
+  /// Where the runner's newest run with a track started, for the map to open
+  /// on before it knows anything better.
+  final LatLng? lastRunStart;
+
   const ExploreRoutesScreen({
     super.key,
     this.apiClient,
@@ -101,6 +105,7 @@ class ExploreRoutesScreen extends StatefulWidget {
     this.mapButtons = const [],
     this.onBuildRoute,
     this.locateFn,
+    this.lastRunStart,
   });
 
   @override
@@ -255,6 +260,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
   }
 
   void _frame(List<LatLng> line) {
+    _mapKey.currentState?.claim();
     try {
       _map.fitCamera(CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(line),
@@ -274,6 +280,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
       });
 
   void _zoomOut() {
+    _mapKey.currentState?.claim();
     try {
       final camera = _map.camera;
       _map.move(camera.center, (camera.zoom - 2).clamp(2, 18).toDouble());
@@ -283,6 +290,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
   }
 
   void _moveTo(LatLngPoint at, double zoom) {
+    _mapKey.currentState?.claim();
     try {
       _map.move(LatLng(at.lat, at.lng), zoom);
     } catch (e) {
@@ -699,6 +707,7 @@ class _ExploreRoutesScreenState extends State<ExploreRoutesScreen> {
           visibleIds: {for (final p in _shown) p.id},
           selectedId: _selectedId,
           selectedLine: _selectedLine,
+          lastRunStart: widget.lastRunStart,
         ),
         overlays: [
           ExploreTopBar(

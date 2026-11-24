@@ -333,8 +333,8 @@ void main() {
         anyTime(find.text("Couldn't load park courses.")), findsOneWidget);
     expect(
         anyTime(find.widgetWithText(OutlinedButton, 'Retry')), findsOneWidget);
-    // Nothing listed is nothing cut short, so no "See all".
-    expect(find.byKey(const Key('races-any-time-all')), findsNothing);
+    // No park loaded is no park to put on a map.
+    expect(find.byKey(const Key('races-any-time-map')), findsNothing);
   });
 
   testWidgets(
@@ -400,9 +400,9 @@ void main() {
     expect(find.text('Richmond 10K'), findsNothing);
     expect(find.byKey(const Key('filter-bar-filters')), findsNothing);
     // The section is kept, not rebuilt, so every park is there at once, and
-    // with every park listed there is no "See all".
+    // the whole list still has its way to the map (decisions § 2613).
     expect(parkCards(), findsNWidgets(10));
-    expect(find.byKey(const Key('races-any-time-all')), findsNothing);
+    expect(find.byKey(const Key('races-any-time-map')), findsOneWidget);
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Races'));
     await tester.pump();
@@ -553,8 +553,8 @@ void main() {
     });
 
     testWidgets(
-        'a park opens its park page; See all in the heading opens the full '
-        'index', (tester) async {
+        'a park opens its park page; Map in the heading opens the parks map',
+        (tester) async {
       tallView(tester);
       await tester.pumpWidget(section(_ParksApi(extraParks: 8),
           positions: () => const Stream.empty()));
@@ -571,22 +571,30 @@ void main() {
         () => find.byType(ParkScreen).evaluate().isEmpty,
         describe: 'the park page to close',
       );
-      await tester.tap(find.byKey(const Key('races-any-time-all')));
+      await tester.tap(find.byKey(const Key('races-any-time-map')));
       await pumpUntil(
         tester,
         () => find.byType(ParksScreen).evaluate().isNotEmpty,
-        describe: 'the park index to open',
+        describe: 'the parks map to open',
       );
     });
 
-    testWidgets('See all shows only when the list is cut short, with the count',
-        (tester) async {
+    testWidgets(
+        'Map shows whenever a park is listed, cut short or whole, in the '
+        'heading row', (tester) async {
       tallView(tester);
       await tester.pumpWidget(
           section(_ParksApi(), positions: () => const Stream.empty()));
       await coursesListed(tester);
-      expect(find.byKey(const Key('races-any-time-all')), findsNothing,
-          reason: 'two parks fit under the limit of eight');
+      final map = find.byKey(const Key('races-any-time-map'));
+      expect(map, findsOneWidget,
+          reason: 'two parks fit under the limit of eight, and still map');
+      expect(find.descendant(of: map, matching: find.text('Map')),
+          findsOneWidget);
+      // In the heading row, not under the last card.
+      expect(tester.getCenter(map).dy,
+          moreOrLessEquals(tester.getCenter(find.text('Run any time')).dy,
+              epsilon: 24));
 
       // A new section, not the old one handed a new client.
       await tester.pumpWidget(const SizedBox());
@@ -594,29 +602,20 @@ void main() {
           positions: () => const Stream.empty()));
       await pumpUntil(
         tester,
-        () => find.byKey(const Key('races-any-time-all')).evaluate().isNotEmpty,
-        describe: 'the cut-short list to offer See all',
+        () => find.byKey(const Key('races-any-time-map')).evaluate().isNotEmpty,
+        describe: 'the cut-short list to offer the map',
       );
-      final seeAll = find.byKey(const Key('races-any-time-all'));
-      // Ten parks of one course each.
-      expect(find.descendant(of: seeAll, matching: find.text('See all 10 courses')),
-          findsOneWidget);
-      // In the heading row, not under the last card.
-      expect(tester.getCenter(seeAll).dy,
-          moreOrLessEquals(tester.getCenter(find.text('Run any time')).dy,
-              epsilon: 24));
     });
 
-    test('See all reads as one course, not "all 1", in every locale', () {
-      expect(lookupAppLocalizations(const Locale('en')).racesAnyTimeSeeAll(1),
-          'See the course');
-      for (final locale in AppLocalizations.supportedLocales) {
-        final l10n = lookupAppLocalizations(locale);
-        expect(l10n.racesAnyTimeSeeAll(1), isNot(contains('1')),
-            reason: '$locale: one course is named, not counted');
-        expect(l10n.racesAnyTimeSeeAll(12), contains('12'),
-            reason: '$locale: a longer list says how many');
-      }
+    testWidgets('Map is read aloud as the map of park courses',
+        (tester) async {
+      tallView(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+          section(_ParksApi(), positions: () => const Stream.empty()));
+      await coursesListed(tester);
+      expect(find.bySemanticsLabel('Map of park courses'), findsOneWidget);
+      semantics.dispose();
     });
 
     testWidgets('a course far away reads in whole, grouped kilometres',
@@ -787,7 +786,7 @@ void main() {
       await walkScrollable(tester, primaryScrollable(), 'Courses, no match');
     });
 
-    worstCaseTestWidgets('the cut-short list with See all in its heading',
+    worstCaseTestWidgets('the cut-short list with Map in its heading',
         (tester, locale) async {
       await tester.pumpWidget(worstCaseApp(
         locale: locale,
@@ -802,8 +801,8 @@ void main() {
       ));
       await pumpUntil(
         tester,
-        () => find.byKey(const Key('races-any-time-all')).evaluate().isNotEmpty,
-        describe: 'See all to show',
+        () => find.byKey(const Key('races-any-time-map')).evaluate().isNotEmpty,
+        describe: 'Map to show',
       );
       expectNoOverflow(tester, 'Run any time heading');
     });

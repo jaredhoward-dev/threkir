@@ -6236,7 +6236,7 @@
   "racesAnyTimeNoTimeYet": "今シーズンはまだタイムがありません。最初のタイムを残せるかもしれません。",
   "racesAnyTimeAway": "{distance}先",
   "racesAnyTimeNoMatch": "「{query}」に一致する公園コースはありません",
-  "racesAnyTimeSeeAll": "{n, plural, =1{公園コースを見る} other{{n}件の公園コースをすべて見る}}",
+  "racesAnyTimeMap": "地図",
   "racesAnyTimeFastestFailed": "今シーズンの最速タイムを読み込めませんでした。",
   "reportReasonOrganiserDispute": "自分の団体へのなりすまし・複製",
   "reportReasonOrganiserDisputeHint": "認証済みクラブの所有者と管理者向けです。担当者が判断し、自動で非表示になることはありません。",
