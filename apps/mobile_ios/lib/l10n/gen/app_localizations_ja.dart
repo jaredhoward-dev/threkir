@@ -14968,15 +14968,7 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String racesAnyTimeSeeAll(int n) {
-    String _temp0 = intl.Intl.pluralLogic(
-      n,
-      locale: localeName,
-      other: '$n件の公園コースをすべて見る',
-      one: '公園コースを見る',
-    );
-    return '$_temp0';
-  }
+  String get racesAnyTimeMap => '地図';
 
   @override
   String get racesAnyTimeFastestFailed => '今シーズンの最速タイムを読み込めませんでした。';

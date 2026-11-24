@@ -17,7 +17,8 @@ import '../quiet_location.dart';
 import '../screens/park_courses_screen.dart';
 import '../screens/parks_screen.dart';
 
-/// How many parks (and searched courses) the section lists before "See all".
+/// How many parks (and searched courses) the section lists in the All view;
+/// the parks map behind the heading's Map holds every one.
 /// Mirrors `ANY_TIME_LIMIT` on web `/races`.
 const int kRunAnyTimeLimit = 8;
 
@@ -25,10 +26,9 @@ const int kRunAnyTimeLimit = 8;
 /// courses a runner can go and do on any day, nearest first once the phone
 /// already knows where it is, each opening its park page of courses. A course
 /// is listed on its own only when the search finds it by its own name
-/// (decisions § 2550). When [limit] cuts the list short, the heading offers
-/// "See all N courses", which opens `ParksScreen` (the full index) on the
-/// same search; a list that is already whole (the Courses view) has no such
-/// link.
+/// (decisions § 2550). Whenever any park is listed, the heading's Map opens
+/// `ParksScreen` (every park on a map, with its own list) on the same search,
+/// in the All view and the Courses view alike (decisions § 2613).
 ///
 /// It loads on its own, so a failed race search never hides it and a failed
 /// course read never hides the races above it. This season's records, shown
@@ -70,13 +70,10 @@ class RunAnyTimeSection extends StatefulWidget {
 typedef _Entry = ({ParkListing park, ParkCourseListing course});
 typedef _Park = ({ParkListing park, List<ParkCourseListing> courses});
 
-/// What the section lists: the parks and searched courses after [limit],
-/// whether it cut either, and how many courses the whole list stands for.
+/// What the section lists: the parks and searched courses after [limit].
 typedef _Listing = ({
   List<OrderedPark<_Park>> parks,
   List<OrderedCourse<_Entry>> courses,
-  bool truncated,
-  int courseTotal,
 });
 
 class _RunAnyTimeSectionState extends State<RunAnyTimeSection> {
@@ -194,7 +191,7 @@ class _RunAnyTimeSectionState extends State<RunAnyTimeSection> {
         ),
       );
 
-  void _openAll() => Navigator.of(context).push(
+  void _openMap() => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) =>
               ParksScreen(api: widget.api, initialQuery: widget.query.trim()),
@@ -206,7 +203,6 @@ class _RunAnyTimeSectionState extends State<RunAnyTimeSection> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final listing = _loading || _failed ? null : _listing();
-    final truncated = listing?.truncated ?? false;
     return Column(
       key: const Key('races-any-time'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -215,11 +211,17 @@ class _RunAnyTimeSectionState extends State<RunAnyTimeSection> {
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
           child: SectionHeader.title(
             label: l10n.racesSectionAnyTime,
-            trailing: truncated
-                ? TextButton(
-                    key: const Key('races-any-time-all'),
-                    onPressed: _openAll,
-                    child: Text(l10n.racesAnyTimeSeeAll(listing!.courseTotal)),
+            // The way to the parks map, whenever there is a park to put on
+            // it: a cut list and a whole one alike (decisions § 2613).
+            trailing: listing != null && _courses.isNotEmpty
+                ? TextButton.icon(
+                    key: const Key('races-any-time-map'),
+                    onPressed: _openMap,
+                    icon: const Icon(Icons.map_outlined),
+                    label: Text(
+                      l10n.racesAnyTimeMap,
+                      semanticsLabel: l10n.parksMapLabel,
+                    ),
                   )
                 : null,
           ),
@@ -283,11 +285,6 @@ class _RunAnyTimeSectionState extends State<RunAnyTimeSection> {
     return (
       parks: limit == null ? parks : parks.take(limit).toList(),
       courses: limit == null ? courses : courses.take(limit).toList(),
-      truncated:
-          limit != null && (parks.length > limit || courses.length > limit),
-      courseTotal:
-          parks.fold<int>(0, (n, p) => n + p.park.courses.length) +
-              courses.length,
     );
   }
 

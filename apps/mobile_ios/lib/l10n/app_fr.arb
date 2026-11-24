@@ -6236,7 +6236,7 @@
   "racesAnyTimeNoTimeYet": "Aucun temps cette saison pour l'instant. Le vôtre pourrait être le premier.",
   "racesAnyTimeAway": "à {distance}",
   "racesAnyTimeNoMatch": "Aucun parcours ne correspond à « {query} »",
-  "racesAnyTimeSeeAll": "{n, plural, =1{Voir le parcours} other{Voir les {n} parcours}}",
+  "racesAnyTimeMap": "Carte",
   "racesAnyTimeFastestFailed": "Impossible de charger les meilleurs temps de cette saison.",
   "reportReasonOrganiserDispute": "Usurpe ou copie mon organisation",
   "reportReasonOrganiserDisputeHint": "Pour les propriétaires et administrateurs d'un club vérifié. Un vérificateur décide ; rien n'est masqué automatiquement.",

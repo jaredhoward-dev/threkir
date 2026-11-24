@@ -16100,15 +16100,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String racesAnyTimeSeeAll(int n) {
-    String _temp0 = intl.Intl.pluralLogic(
-      n,
-      locale: localeName,
-      other: 'Alle $n Strecken ansehen',
-      one: 'Strecke ansehen',
-    );
-    return '$_temp0';
-  }
+  String get racesAnyTimeMap => 'Karte';
 
   @override
   String get racesAnyTimeFastestFailed =>

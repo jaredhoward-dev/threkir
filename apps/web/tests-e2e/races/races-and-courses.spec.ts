@@ -282,7 +282,8 @@ test.describe('races & courses', () => {
 		const empty = page.getByTestId('races-any-time-empty');
 		await expect(empty).toBeVisible({ timeout: 10_000 });
 		await expect(empty).toContainText('No park courses yet.');
-		await expect(page.getByTestId('races-any-time-all')).toHaveCount(0);
+		// No park is no park to put on a map.
+		await expect(page.getByTestId('races-any-time-map')).toHaveCount(0);
 	});
 
 	test('failed fastest times keep a searched course listed, without them, and say so', async ({ page }) => {
@@ -323,8 +324,6 @@ test.describe('races & courses', () => {
 		// One search box: the place field lives only in the race Filters sheet.
 		await expect(page.getByTestId('races-near')).toHaveCount(0);
 		await expect(anyTime.getByTestId('races-use-location')).toBeVisible();
-		// Every park is listed here, so there is no "See all".
-		await expect(anyTime.getByTestId('races-any-time-all')).toHaveCount(0);
 		// The search stays, and says what it finds in this view.
 		await expect(page.getByTestId('races-search')).toHaveAttribute('placeholder', 'Search parks, courses or places…');
 
@@ -356,7 +355,7 @@ test.describe('races & courses', () => {
 		await expect(page.getByTestId('races-any-time')).toBeVisible();
 	});
 
-	test('Courses lists every park, where both sections stop at eight', async ({ page }) => {
+	test('Courses lists every park, where both sections stop at eight, and both offer the map', async ({ page }) => {
 		let planted: Planted[] = [];
 		try {
 			planted = await plantCourses(9);
@@ -365,12 +364,14 @@ test.describe('races & courses', () => {
 			const cards = page.getByTestId('races-any-time-park');
 			await expect(cards.first()).toBeVisible({ timeout: 10_000 });
 			await expect(cards).toHaveCount(8);
-			const seeAll = page.getByTestId('races-any-time-all');
-			await expect(seeAll).toHaveText(/^See all \d+ courses/);
-			await expect(seeAll).toHaveAttribute('href', '/parks');
+			const map = page.getByTestId('races-any-time-map');
+			await expect(map).toHaveText(/Map$/);
+			await expect(map).toHaveAccessibleName('Map of park courses');
+			await expect(map).toHaveAttribute('href', '/parks');
 
+			// The whole list keeps its way to the map (decisions § 2613).
 			await page.getByTestId('races-show-courses').click();
-			await expect(seeAll).toHaveCount(0);
+			await expect(map).toHaveAttribute('href', '/parks');
 			for (const p of planted) {
 				await expect(cards.filter({ hasText: p.parkName })).toHaveCount(1, { timeout: 10_000 });
 			}
@@ -426,14 +427,14 @@ test.describe('races & courses', () => {
 		}
 	});
 
-	test('/parks is reachable from a cut-short Run any time and directly, with no strip of its own', async ({
+	test('/parks is reachable from Run any time in either view and directly, with no strip of its own', async ({
 		page,
 	}) => {
 		let planted: Planted[] = [];
 		try {
-			planted = await plantCourses(9);
-			await page.goto('/races');
-			await page.getByTestId('races-any-time-all').click({ timeout: 10_000 });
+			planted = await plantCourses(1);
+			await page.goto('/races?show=courses');
+			await page.getByTestId('races-any-time-map').click({ timeout: 10_000 });
 			await page.waitForURL(/\/parks$/);
 			await expect(page.getByRole('heading', { level: 1, name: 'Park courses' })).toBeVisible();
 			await expect(page.locator('nav.surface-tabs')).toHaveCount(0);
