@@ -29365,6 +29365,24 @@
   "@parksMapLabel": {
     "description": "Screen-reader label of the parks map (decisions § 2612). Web key parks.mapLabel."
   },
+  "parksMapGroup": "{n, plural, one {{n} park} other {{n} parks}}",
+  "@parksMapGroup": {
+    "description": "Parks map (decisions § 2612): the pill standing for several parks whose own pills would overlap at this zoom; tapping it zooms in on them. n is how many parks. Web key parks.mapGroup.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "parksMapGroupLabel": "{n, plural, one {{n} park here. Zoom in to see it} other {{n} parks here. Zoom in to see them}}",
+  "@parksMapGroupLabel": {
+    "description": "Screen-reader name of the parks map pill standing for several crowded parks (parksMapGroup); tapping it zooms in. Web key parks.mapGroupLabel.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "parksMapMarkerLabel": "{park}, {count}",
   "@parksMapMarkerLabel": {
     "description": "Screen-reader name of a park's pin on the parks map: the park's name and its course count (parksCourseCount, already formatted). Web key parks.markerLabel.",

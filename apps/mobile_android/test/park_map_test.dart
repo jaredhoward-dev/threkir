@@ -59,4 +59,25 @@ void main() {
       expect(countInView(points, view), want.where((v) => v).length);
     });
   }
+
+  for (final c in (_fixture['overlapCases'] as List).cast<Map<String, dynamic>>()) {
+    test('overlap: ${c['name']}', () {
+      final box = c['box'] as Map<String, dynamic>;
+      final points = [
+        for (final p in (c['points'] as List).cast<Map<String, dynamic>>())
+          (x: (p['x'] as num).toDouble(), y: (p['y'] as num).toDouble()),
+      ];
+      final want = [
+        for (final g in c['groups'] as List) (g as List).cast<int>(),
+      ];
+      expect(
+        groupOverlapping(
+          points,
+          width: (box['width'] as num).toDouble(),
+          height: (box['height'] as num).toDouble(),
+        ),
+        want,
+      );
+    });
+  }
 }

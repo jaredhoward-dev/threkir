@@ -23039,6 +23039,28 @@ class AppLocalizationsPt extends AppLocalizations {
   String get parksMapLabel => 'Mapa de percursos de parques';
 
   @override
+  String parksMapGroup(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques',
+      one: '$n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String parksMapGroupLabel(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques aqui. Aproxime o mapa para os ver',
+      one: '$n parque aqui. Aproxime o mapa para o ver',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String parksMapMarkerLabel(String park, String count) {
     return '$park, $count';
   }
@@ -47597,6 +47619,28 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get parksMapLabel => 'Mapa de percursos de parques';
+
+  @override
+  String parksMapGroup(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques',
+      one: '$n parque',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String parksMapGroupLabel(int n) {
+    String _temp0 = intl.Intl.pluralLogic(
+      n,
+      locale: localeName,
+      other: '$n parques aqui. Aproxime o mapa para vê-los',
+      one: '$n parque aqui. Aproxime o mapa para vê-lo',
+    );
+    return '$_temp0';
+  }
 
   @override
   String parksMapMarkerLabel(String park, String count) {

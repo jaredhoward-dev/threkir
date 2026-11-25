@@ -11,7 +11,9 @@ import { USER_A } from '../fixtures/users';
  * See the route and Board, and the notices sit in About this park.
  *
  * Planted (service role) in one park under a unique slug at (36.4, -79.6),
- * which no seed row or other spec uses, and removed afterwards.
+ * which no seed row or other spec uses, and removed afterwards. Two more
+ * parks, a few hundred metres apart under a tag of their own at (36.2, -79.9),
+ * stand for a crowd whose pills would overlap.
  */
 
 const M_PER_DEG_LAT = 111_320;
@@ -23,7 +25,11 @@ const PARK_NAME = `E2E Map First State Park ${TAG}`;
 const PARK_PATH = `/parks/us-va/${PARK_SLUG}`;
 const LONG_NAME = `The Very Long Lakeside And Ridge Connector Loop Through The Old Hardwood Forest ${TAG}`;
 
+const PAIR = `pair${Math.random().toString(36).slice(2, 8)}`;
+const PAIR_NAMES = [`E2E Crowded North Park ${PAIR}`, `E2E Crowded South Park ${PAIR}`];
+
 let parkId: string | null = null;
+const pairIds: string[] = [];
 const segmentIds: string[] = [];
 
 test.beforeAll(async () => {
@@ -78,11 +84,30 @@ test.beforeAll(async () => {
 		});
 		if (course.error) throw course.error;
 	}
+	for (const [i, name] of PAIR_NAMES.entries()) {
+		const pair = await admin
+			.from('parks')
+			.insert({
+				slug: `e2e-crowded-${i}-${PAIR}`,
+				name,
+				agency: 'state',
+				region_code: 'US-VA',
+				country_code: 'US',
+				timezone: 'America/New_York',
+				centroid_lat: 36.2 - i * 0.004,
+				centroid_lng: -79.9 - i * 0.004,
+			})
+			.select('id')
+			.single();
+		if (pair.error) throw pair.error;
+		pairIds.push(pair.data.id);
+	}
 });
 
 test.afterAll(async () => {
 	const admin = getAdminClient();
 	if (parkId) await admin.from('parks').delete().eq('id', parkId);
+	if (pairIds.length) await admin.from('parks').delete().in('id', pairIds);
 	if (segmentIds.length) await admin.from('global_segments').delete().in('id', segmentIds);
 });
 
@@ -126,6 +151,23 @@ test.describe('park courses on a phone', () => {
 		await expect(page.getByTestId('parks-list-button')).toHaveText(/List · 1 park$/);
 		await pin.click();
 		await page.waitForURL(`**${PARK_PATH}`);
+	});
+
+	test('parks whose pills would overlap share one "2 parks" button that zooms in until each has its own', async ({
+		page,
+	}) => {
+		await page.goto(`/parks?q=${PAIR}`);
+		const group = page.getByTestId('parks-map-group');
+		await expect(group).toHaveCount(1, { timeout: 15_000 });
+		await expect(group).toHaveText('2 parks');
+		await expect(group).toHaveAccessibleName('2 parks here. Zoom in to see them');
+		await expect(page.getByTestId('parks-map-pin')).toHaveCount(0);
+		await expect(page.getByTestId('parks-list-button')).toHaveText(/List · 2 parks$/);
+		await group.click();
+		for (const name of PAIR_NAMES) {
+			await expect(page.getByTestId('parks-map-pin').filter({ hasText: name })).toHaveCount(1, { timeout: 15_000 });
+		}
+		await expect(page.getByTestId('parks-map-group')).toHaveCount(0);
 	});
 
 	test('a search finds the park in the list view and its card opens it', async ({ page }) => {

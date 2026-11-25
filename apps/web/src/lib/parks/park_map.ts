@@ -73,3 +73,33 @@ export function countInView(points: readonly (LatLng | null | undefined)[], view
 	for (const p of points) if (pointInView(p, view)) n++;
 	return n;
 }
+
+export interface ScreenPoint {
+	x: number;
+	y: number;
+}
+
+/**
+ * Which markers' labels would overlap on screen, as groups of indices into
+ * `points`. Every label is a box of the given size, anchored at its marker the same way, so two
+ * overlap when they are less than a box apart on both axes. Each marker, in the
+ * order given, joins the first group whose first marker it overlaps, else
+ * starts one, so a caller lists first the markers it most wants drawn whole,
+ * and a chain of near neighbours does not merge a whole region into one group.
+ */
+export function groupOverlapping(
+	points: readonly ScreenPoint[],
+	box: { width: number; height: number },
+): number[][] {
+	const groups: number[][] = [];
+	for (let i = 0; i < points.length; i++) {
+		const p = points[i];
+		const home = groups.find((g) => {
+			const lead = points[g[0]];
+			return Math.abs(p.x - lead.x) < box.width && Math.abs(p.y - lead.y) < box.height;
+		});
+		if (home) home.push(i);
+		else groups.push([i]);
+	}
+	return groups;
+}

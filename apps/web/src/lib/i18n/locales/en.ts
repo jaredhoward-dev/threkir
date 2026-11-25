@@ -8101,6 +8101,8 @@ export const en = {
 	"parks.showMap": "Map",
 	"parks.howItWorks": "How park courses work",
 	"parks.mapLabel": "Map of park courses",
+	"parks.mapGroup": "{n, plural, one {# park} other {# parks}}",
+	"parks.mapGroupLabel": "{n, plural, one {# park here. Zoom in to see it} other {# parks here. Zoom in to see them}}",
 	"parks.markerLabel": "{park}, {count}",
 	"parks.aboutPark": "About this park",
 	"parks.startHere": "Start here",
