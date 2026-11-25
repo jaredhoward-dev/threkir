@@ -81,7 +81,7 @@ export interface ScreenPoint {
 
 /**
  * Which markers' labels would overlap on screen, as groups of indices into
- * `points`. Every label is a `box` anchored at its marker the same way, so two
+ * `points`. Every label is a box of the given size, anchored at its marker the same way, so two
  * overlap when they are less than a box apart on both axes. Each marker, in the
  * order given, joins the first group whose first marker it overlaps, else
  * starts one, so a caller lists first the markers it most wants drawn whole,
