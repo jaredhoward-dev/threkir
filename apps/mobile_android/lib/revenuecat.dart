@@ -95,13 +95,32 @@ enum ProPlan { monthly, annual }
 /// Either side may be missing: the screen offers only the plans that are
 /// here, so a purchase can never target a package the buyer was not shown.
 class ProPlanOptions {
-  const ProPlanOptions({this.monthly, this.annual});
+  const ProPlanOptions({
+    this.monthly,
+    this.annual,
+    this.introEligible = const {},
+  });
 
   final Package? monthly;
   final Package? annual;
 
+  /// The plans whose introductory offer this buyer will actually be charged,
+  /// per [introEligiblePlans]. A plan outside this set shows its full price.
+  final Set<ProPlan> introEligible;
+
   Package? packageFor(ProPlan plan) =>
       plan == ProPlan.annual ? annual : monthly;
+
+  ProPlanOptions withIntroEligible(Set<ProPlan> plans) =>
+      ProPlanOptions(monthly: monthly, annual: annual, introEligible: plans);
+
+  /// The introductory offer to show on [plan], or null when there is none or
+  /// the buyer is not eligible for it.
+  ProIntroOffer? introOfferFor(ProPlan plan) {
+    if (!introEligible.contains(plan)) return null;
+    final product = packageFor(plan)?.storeProduct;
+    return product == null ? null : proIntroOffer(product);
+  }
 
   /// Annual first: it is the plan the screen recommends.
   List<ProPlan> get plans => [
@@ -121,6 +140,97 @@ class ProPlanOptions {
       return null;
     }
     return annualSavingPercent(m.price, a.price);
+  }
+}
+
+/// A store's introductory offer on one Pro plan: a free trial, or a reduced
+/// price for the first stretch. The store applies it at checkout on its own
+/// (Play through RevenueCat's default subscription option, Apple through the
+/// intro offer on the product), so the screen only has to describe it.
+class ProIntroOffer {
+  const ProIntroOffer({
+    required this.priceString,
+    required this.free,
+    required this.unit,
+    required this.unitsPerCycle,
+    required this.cycles,
+  });
+
+  /// The store-localised price of one cycle of the offer.
+  final String priceString;
+  final bool free;
+  final PeriodUnit unit;
+
+  /// Length of one billing cycle of the offer, in [unit]s.
+  final int unitsPerCycle;
+
+  /// How many cycles the offer lasts before the full price starts.
+  final int cycles;
+
+  /// The offer's whole length, in [unit]s.
+  int get totalUnits => unitsPerCycle * cycles;
+}
+
+/// The introductory offer [product] carries, or null when it has none or
+/// describes it in a shape the screen cannot state accurately: a price
+/// charged every few weeks or months ("per 2 weeks for 6 weeks") has no
+/// per-unit wording, so that offer is left to the store's own sheet.
+ProIntroOffer? proIntroOffer(StoreProduct product) {
+  final intro = product.introductoryPrice;
+  if (intro == null ||
+      intro.cycles < 1 ||
+      intro.periodNumberOfUnits < 1 ||
+      intro.periodUnit == PeriodUnit.unknown ||
+      (intro.price > 0 && intro.cycles > 1 && intro.periodNumberOfUnits > 1)) {
+    return null;
+  }
+  return ProIntroOffer(
+    priceString: intro.priceString,
+    free: intro.price <= 0,
+    unit: intro.periodUnit,
+    unitsPerCycle: intro.periodNumberOfUnits,
+    cycles: intro.cycles,
+  );
+}
+
+/// The plans in [options] whose introductory offer the buyer will be charged.
+/// Play returns only the offers a buyer is eligible for, so on Android an
+/// offer's presence is the answer. The App Store returns the intro price to
+/// everyone, so on iOS only an explicit Eligible in [iosEligibility] (keyed by
+/// product id) counts: Unknown shows the full price, as RevenueCat advises, so
+/// the screen never quotes a price the payment sheet then refuses.
+Set<ProPlan> introEligiblePlans(
+  ProPlanOptions options, {
+  required bool ios,
+  Map<String, IntroEligibilityStatus> iosEligibility = const {},
+}) =>
+    {
+      for (final plan in options.plans)
+        if (options.packageFor(plan)!.storeProduct.introductoryPrice != null &&
+            (!ios ||
+                iosEligibility[
+                        options.packageFor(plan)!.storeProduct.identifier] ==
+                    IntroEligibilityStatus.introEligibilityStatusEligible))
+          plan,
+    };
+
+/// Asks the App Store which of [options]' products the buyer may take the
+/// intro offer on. A failed check answers nothing, so every plan falls back
+/// to its full price rather than the screen failing.
+Future<Map<String, IntroEligibilityStatus>> _iosIntroEligibility(
+    ProPlanOptions options) async {
+  final ids = [
+    for (final plan in options.plans)
+      if (options.packageFor(plan)!.storeProduct.introductoryPrice != null)
+        options.packageFor(plan)!.storeProduct.identifier,
+  ];
+  if (ids.isEmpty) return const {};
+  try {
+    final result = await Purchases.checkTrialOrIntroductoryPriceEligibility(ids);
+    return {for (final e in result.entries) e.key: e.value.status};
+  } catch (e) {
+    debugPrint('RevenueCat intro eligibility check failed: $e');
+    return const {};
   }
 }
 
@@ -208,7 +318,7 @@ Future<PurchaseResult> startProCheckout(
 }
 
 /// The Pro plans the current offering sells for [userId], each carrying its
-/// store-localised price. Null when the SDK isn't configured or the offering
+/// store-localised price and which plans' intro offers the buyer may take. Null when the SDK isn't configured or the offering
 /// can't be fetched: the screen then falls back to the USD list price.
 /// Apple Guideline 3.1.1 + Play subscription policy require the displayed
 /// price to come from the store, since it varies by territory.
@@ -221,7 +331,13 @@ Future<ProPlanOptions?> loadProPlans(
   }
   try {
     final options = proPlanOptions(await Purchases.getOfferings());
-    return options.plans.isEmpty ? null : options;
+    if (options.plans.isEmpty) return null;
+    final ios = Platform.isIOS;
+    return options.withIntroEligible(introEligiblePlans(
+      options,
+      ios: ios,
+      iosEligibility: ios ? await _iosIntroEligibility(options) : const {},
+    ));
   } catch (e) {
     debugPrint('RevenueCat offerings fetch failed: $e');
     return null;

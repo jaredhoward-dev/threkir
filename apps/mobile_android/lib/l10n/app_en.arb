@@ -12728,6 +12728,105 @@
   "@proSubscribeSubtitleConfiguredAnnual": {
     "description": "Pro subscribe tile subtitle when the yearly plan is selected: billing period and renewal terms"
   },
+  "proIntroDays": "{count, plural, =1{1 day} other{{count} days}}",
+  "@proIntroDays": {
+    "description": "Length of a store introductory offer in days, used inside the proIntro* sentences",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "proIntroWeeks": "{count, plural, =1{1 week} other{{count} weeks}}",
+  "@proIntroWeeks": {
+    "description": "Length of a store introductory offer in weeks, used inside the proIntro* sentences",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "proIntroMonths": "{count, plural, =1{1 month} other{{count} months}}",
+  "@proIntroMonths": {
+    "description": "Length of a store introductory offer in months, used inside the proIntro* sentences",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "proIntroYears": "{count, plural, =1{1 year} other{{count} years}}",
+  "@proIntroYears": {
+    "description": "Length of a store introductory offer in years, used inside the proIntro* sentences",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "proIntroPerDay": "{price}/day",
+  "@proIntroPerDay": {
+    "description": "A store-localised price per day, used inside the proIntro* sentences",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "proIntroPerWeek": "{price}/week",
+  "@proIntroPerWeek": {
+    "description": "A store-localised price per week, used inside the proIntro* sentences",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "proIntroPerMonth": "{price}/month",
+  "@proIntroPerMonth": {
+    "description": "A store-localised price per month, used inside the proIntro* sentences (the intro price per cycle, or the full price a plan renews at)",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "proIntroPerYear": "{price}/year",
+  "@proIntroPerYear": {
+    "description": "A store-localised price per year, used inside the proIntro* sentences (the intro price per cycle, or the full price a plan renews at)",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "proIntroFree": "{duration} free, then {renewal}",
+  "@proIntroFree": {
+    "description": "Pro plan line for a store free trial, e.g. \"7 days free, then $79.99/year\". duration is a proIntroDays/Weeks/Months/Years phrase; renewal is a proIntroPerMonth/PerYear phrase",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      },
+      "renewal": {
+        "type": "String"
+      }
+    }
+  },
+  "proIntroPrice": "{price} for {duration}, then {renewal}",
+  "@proIntroPrice": {
+    "description": "Pro plan line for a store intro price, e.g. \"$4.99/month for 3 months, then $9.99/month\" or \"$19.99 for 3 months, then $9.99/month\". price is either a bare amount or a proIntroPer* phrase; duration is a proIntroDays/Weeks/Months/Years phrase; renewal is a proIntroPerMonth/PerYear phrase",
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      },
+      "renewal": {
+        "type": "String"
+      }
+    }
+  },
   "proComingSoonTitle": "Pro — coming soon",
   "@proComingSoonTitle": {
     "description": "Pro tile title when the deploy has no live Pro perk to sell"

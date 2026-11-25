@@ -14990,6 +14990,66 @@ abstract class AppLocalizations {
   /// **'10 AI coach messages a day + priority processing. Billed once a year. Auto-renews yearly until cancelled in Settings → Subscriptions.'**
   String get proSubscribeSubtitleConfiguredAnnual;
 
+  /// Length of a store introductory offer in days, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String proIntroDays(int count);
+
+  /// Length of a store introductory offer in weeks, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 week} other{{count} weeks}}'**
+  String proIntroWeeks(int count);
+
+  /// Length of a store introductory offer in months, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 month} other{{count} months}}'**
+  String proIntroMonths(int count);
+
+  /// Length of a store introductory offer in years, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 year} other{{count} years}}'**
+  String proIntroYears(int count);
+
+  /// A store-localised price per day, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{price}/day'**
+  String proIntroPerDay(String price);
+
+  /// A store-localised price per week, used inside the proIntro* sentences
+  ///
+  /// In en, this message translates to:
+  /// **'{price}/week'**
+  String proIntroPerWeek(String price);
+
+  /// A store-localised price per month, used inside the proIntro* sentences (the intro price per cycle, or the full price a plan renews at)
+  ///
+  /// In en, this message translates to:
+  /// **'{price}/month'**
+  String proIntroPerMonth(String price);
+
+  /// A store-localised price per year, used inside the proIntro* sentences (the intro price per cycle, or the full price a plan renews at)
+  ///
+  /// In en, this message translates to:
+  /// **'{price}/year'**
+  String proIntroPerYear(String price);
+
+  /// Pro plan line for a store free trial, e.g. "7 days free, then $79.99/year". duration is a proIntroDays/Weeks/Months/Years phrase; renewal is a proIntroPerMonth/PerYear phrase
+  ///
+  /// In en, this message translates to:
+  /// **'{duration} free, then {renewal}'**
+  String proIntroFree(String duration, String renewal);
+
+  /// Pro plan line for a store intro price, e.g. "$4.99/month for 3 months, then $9.99/month" or "$19.99 for 3 months, then $9.99/month". price is either a bare amount or a proIntroPer* phrase; duration is a proIntroDays/Weeks/Months/Years phrase; renewal is a proIntroPerMonth/PerYear phrase
+  ///
+  /// In en, this message translates to:
+  /// **'{price} for {duration}, then {renewal}'**
+  String proIntroPrice(String price, String duration, String renewal);
+
   /// Pro tile title when the deploy has no live Pro perk to sell
   ///
   /// In en, this message translates to:

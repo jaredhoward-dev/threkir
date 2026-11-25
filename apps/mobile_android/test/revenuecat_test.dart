@@ -2,7 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:purchases_flutter/purchases_flutter.dart'
-    show CustomerInfo, EntitlementInfo, EntitlementInfos, PackageType;
+    show
+        CustomerInfo,
+        EntitlementInfo,
+        EntitlementInfos,
+        IntroEligibilityStatus,
+        IntroductoryPrice,
+        PackageType,
+        PeriodUnit;
 
 import '../lib/revenuecat.dart';
 import '../lib/store_links.dart';
@@ -165,6 +172,92 @@ void main() {
       final options =
           proPlanOptions(proOfferings([proMonthlyPackage, eurAnnual]));
       expect(options.savingPercent, isNull);
+    });
+  });
+
+  group('proIntroOffer', () {
+    test('reads a free trial', () {
+      final offer =
+          proIntroOffer(proAnnualWithIntro(sevenDayTrial).storeProduct)!;
+      expect(offer.free, isTrue);
+      expect(offer.unit, PeriodUnit.day);
+      expect(offer.totalUnits, 7);
+    });
+
+    test('reads a price charged each month for three months', () {
+      final offer = proIntroOffer(proMonthlyWithIntro(const IntroductoryPrice(
+              4.99, r'$4.99', 'P1M', 3, PeriodUnit.month, 1))
+          .storeProduct)!;
+      expect(offer.free, isFalse);
+      expect(offer.priceString, r'$4.99');
+      expect(offer.cycles, 3);
+      expect(offer.totalUnits, 3);
+    });
+
+    test('a product with no intro offer has none', () {
+      expect(proIntroOffer(proAnnualPackage.storeProduct), isNull);
+    });
+
+    test('an offer with an unknown period is not described', () {
+      expect(
+        proIntroOffer(proMonthlyWithIntro(const IntroductoryPrice(
+                0, r'$0.00', '', 1, PeriodUnit.unknown, 7))
+            .storeProduct),
+        isNull,
+      );
+    });
+
+    test('a price charged every two weeks has no per-unit wording', () {
+      expect(
+        proIntroOffer(proMonthlyWithIntro(const IntroductoryPrice(
+                2.99, r'$2.99', 'P2W', 3, PeriodUnit.week, 2))
+            .storeProduct),
+        isNull,
+      );
+    });
+  });
+
+  group('introEligiblePlans', () {
+    final options = ProPlanOptions(
+      monthly: proMonthlyPackage,
+      annual: proAnnualWithIntro(sevenDayTrial),
+    );
+
+    test('Android trusts the offer Play returned', () {
+      expect(introEligiblePlans(options, ios: false), {ProPlan.annual});
+    });
+
+    test('iOS shows the offer only on an explicit Eligible', () {
+      expect(
+        introEligiblePlans(options, ios: true, iosEligibility: {
+          'pro_annual': IntroEligibilityStatus.introEligibilityStatusEligible,
+        }),
+        {ProPlan.annual},
+      );
+    });
+
+    test('iOS shows the full price when eligibility is unknown, refused or '
+        'missing', () {
+      for (final status in [
+        IntroEligibilityStatus.introEligibilityStatusUnknown,
+        IntroEligibilityStatus.introEligibilityStatusIneligible,
+      ]) {
+        expect(
+          introEligiblePlans(options,
+              ios: true, iosEligibility: {'pro_annual': status}),
+          isEmpty,
+        );
+      }
+      expect(introEligiblePlans(options, ios: true), isEmpty);
+    });
+
+    test('introOfferFor answers only for an eligible plan', () {
+      expect(options.introOfferFor(ProPlan.annual), isNull);
+      final eligible = options.withIntroEligible({ProPlan.annual});
+      expect(eligible.introOfferFor(ProPlan.annual)?.free, isTrue);
+      expect(eligible.introOfferFor(ProPlan.monthly), isNull);
+      expect(eligible.monthly, options.monthly);
+      expect(eligible.annual, options.annual);
     });
   });
 
