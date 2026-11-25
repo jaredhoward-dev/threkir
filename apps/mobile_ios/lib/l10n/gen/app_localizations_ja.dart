@@ -9036,6 +9036,76 @@ class AppLocalizationsJa extends AppLocalizations {
       'AIコーチへのメッセージ1日10件 + 優先処理。年に1回請求されます。設定 → サブスクリプションで解約するまで毎年自動更新されます。';
 
   @override
+  String proIntroDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count日間',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroWeeks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count週間',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$countか月',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroYears(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count年間',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroPerDay(String price) {
+    return '$price/日';
+  }
+
+  @override
+  String proIntroPerWeek(String price) {
+    return '$price/週';
+  }
+
+  @override
+  String proIntroPerMonth(String price) {
+    return '$price/月';
+  }
+
+  @override
+  String proIntroPerYear(String price) {
+    return '$price/年';
+  }
+
+  @override
+  String proIntroFree(String duration, String renewal) {
+    return '最初の$durationは無料、その後は$renewal';
+  }
+
+  @override
+  String proIntroPrice(String price, String duration, String renewal) {
+    return '最初の$durationは$price、その後は$renewal';
+  }
+
+  @override
   String get proComingSoonTitle => 'Pro — 近日公開';
 
   @override
