@@ -9788,6 +9788,80 @@ class AppLocalizationsFr extends AppLocalizations {
       '10 messages au coach IA par jour + traitement prioritaire. Facturé une fois par an. Renouvellement annuel automatique jusqu\'à résiliation dans Réglages → Abonnements.';
 
   @override
+  String proIntroDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count jours',
+      one: '1 jour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroWeeks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count semaines',
+      one: '1 semaine',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroMonths(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count mois',
+      one: '1 mois',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroYears(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ans',
+      one: '1 an',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String proIntroPerDay(String price) {
+    return '$price/jour';
+  }
+
+  @override
+  String proIntroPerWeek(String price) {
+    return '$price/semaine';
+  }
+
+  @override
+  String proIntroPerMonth(String price) {
+    return '$price/mois';
+  }
+
+  @override
+  String proIntroPerYear(String price) {
+    return '$price/an';
+  }
+
+  @override
+  String proIntroFree(String duration, String renewal) {
+    return 'Gratuit pendant $duration, puis $renewal';
+  }
+
+  @override
+  String proIntroPrice(String price, String duration, String renewal) {
+    return '$price pendant $duration, puis $renewal';
+  }
+
+  @override
   String get proComingSoonTitle => 'Pro — bientôt disponible';
 
   @override

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:purchases_flutter/purchases_flutter.dart'
+    show IntroductoryPrice, PeriodUnit;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../lib/l10n/date_format.dart';
@@ -415,6 +417,62 @@ void main() {
       expect(store.purchased, [ProPlan.annual]);
     });
 
+    testWidgets('an eligible free trial shows on its plan with the renewal price',
+        (tester) async {
+      await pumpWithStore(
+        tester,
+        () async => ProPlanOptions(
+          monthly: proMonthlyPackage,
+          annual: proAnnualWithIntro(sevenDayTrial),
+          introEligible: const {ProPlan.annual},
+        ),
+      );
+      await waitForSubscribe(tester, r'Subscribe to Pro — $79.99/year');
+
+      expect(
+        find.text('7 days free, then \$79.99/year\n'
+            'Save 33% compared with paying monthly'),
+        findsOneWidget,
+      );
+      // The offer is on the plan tile, not repeated on the subscribe tile.
+      expect(find.textContaining('days free'), findsOneWidget);
+    });
+
+    testWidgets('an offer the buyer is not eligible for is not shown',
+        (tester) async {
+      await pumpWithStore(
+        tester,
+        () async => ProPlanOptions(
+          monthly: proMonthlyPackage,
+          annual: proAnnualWithIntro(sevenDayTrial),
+        ),
+      );
+      await waitForSubscribe(tester, r'Subscribe to Pro — $79.99/year');
+
+      expect(find.textContaining('free, then'), findsNothing);
+      expect(find.text('Save 33% compared with paying monthly'), findsOneWidget);
+    });
+
+    testWidgets('a lone plan states its intro price on the subscribe tile',
+        (tester) async {
+      await pumpWithStore(
+        tester,
+        () async => ProPlanOptions(
+          monthly: proMonthlyWithIntro(const IntroductoryPrice(
+              4.99, r'$4.99', 'P1M', 3, PeriodUnit.month, 1)),
+          introEligible: const {ProPlan.monthly},
+        ),
+      );
+      await waitForSubscribe(tester, r'Subscribe to Pro — $9.99/month');
+
+      expect(
+        find.textContaining(
+            r'$4.99/month for 3 months, then $9.99/month'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Auto-renews monthly'), findsOneWidget);
+    });
+
     testWidgets('no offering falls back to the monthly USD list price',
         (tester) async {
       final store = await pumpWithStore(tester, () async => null);
@@ -607,8 +665,17 @@ void main() {
     await tester.pumpWidget(worstCaseApp(
       locale: locale,
       home: SettingsProScreen(
-          loadPerks: () async =>
-              const ProPerks(coach: true, routeGen: true, webCheckout: true)),
+        loadPerks: () async =>
+            const ProPerks(coach: true, routeGen: true, webCheckout: true),
+        // Both plans carry an eligible offer, so every locale's longest
+        // offer line is laid out at the worst case.
+        store: _FakeProStore(() async => ProPlanOptions(
+              monthly: proMonthlyWithIntro(const IntroductoryPrice(
+                  4.99, r'$4.99', 'P1M', 12, PeriodUnit.month, 1)),
+              annual: proAnnualWithIntro(sevenDayTrial),
+              introEligible: const {ProPlan.monthly, ProPlan.annual},
+            )),
+      ),
     ));
     await tester.pump();
     await tester.pump();

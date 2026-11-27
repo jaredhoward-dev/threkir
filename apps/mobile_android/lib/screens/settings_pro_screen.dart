@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
+import 'package:purchases_flutter/purchases_flutter.dart' show PeriodUnit;
 import 'package:ui_kit/ui_kit.dart' show PageHeader, PushedPage;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -308,6 +309,40 @@ class _SettingsProScreenState extends State<SettingsProScreen>
     }
   }
 
+  String _perUnit(AppLocalizations l10n, PeriodUnit unit, String price) =>
+      switch (unit) {
+        PeriodUnit.day => l10n.proIntroPerDay(price),
+        PeriodUnit.week => l10n.proIntroPerWeek(price),
+        PeriodUnit.month => l10n.proIntroPerMonth(price),
+        _ => l10n.proIntroPerYear(price),
+      };
+
+  String _duration(AppLocalizations l10n, PeriodUnit unit, int count) =>
+      switch (unit) {
+        PeriodUnit.day => l10n.proIntroDays(count),
+        PeriodUnit.week => l10n.proIntroWeeks(count),
+        PeriodUnit.month => l10n.proIntroMonths(count),
+        _ => l10n.proIntroYears(count),
+      };
+
+  /// The store's intro offer on [plan], stated with the price it renews at,
+  /// or null when there is none this buyer will be charged.
+  String? _introLine(
+      AppLocalizations l10n, ProPlanOptions plans, ProPlan plan) {
+    final offer = plans.introOfferFor(plan);
+    if (offer == null) return null;
+    final full = plans.packageFor(plan)!.storeProduct.priceString;
+    final renewal = plan == ProPlan.annual
+        ? l10n.proIntroPerYear(full)
+        : l10n.proIntroPerMonth(full);
+    final duration = _duration(l10n, offer.unit, offer.totalUnits);
+    if (offer.free) return l10n.proIntroFree(duration, renewal);
+    final price = offer.cycles > 1
+        ? _perUnit(l10n, offer.unit, offer.priceString)
+        : offer.priceString;
+    return l10n.proIntroPrice(price, duration, renewal);
+  }
+
   Widget _planTile(
     BuildContext context,
     ProPlanOptions plans,
@@ -317,6 +352,10 @@ class _SettingsProScreenState extends State<SettingsProScreen>
     final l10n = AppLocalizations.of(context);
     final price = plans.packageFor(plan)!.storeProduct.priceString;
     final saving = plan == ProPlan.annual ? plans.savingPercent : null;
+    final details = [
+      ?_introLine(l10n, plans, plan),
+      if (saving != null) l10n.proPlanAnnualSaving(saving),
+    ];
     return Semantics(
       inMutuallyExclusiveGroup: true,
       checked: selected,
@@ -327,7 +366,7 @@ class _SettingsProScreenState extends State<SettingsProScreen>
         title: Text(plan == ProPlan.annual
             ? l10n.proPlanAnnual(price)
             : l10n.proPlanMonthly(price)),
-        subtitle: saving == null ? null : Text(l10n.proPlanAnnualSaving(saving)),
+        subtitle: details.isEmpty ? null : Text(details.join('\n')),
         selected: selected,
         enabled: !_proBusy,
         onTap: () => setState(() => _chosenPlan = plan),
@@ -385,6 +424,9 @@ class _SettingsProScreenState extends State<SettingsProScreen>
     final showRegionalNote = storePrice == null;
     final annual = storePrice != null && plan == ProPlan.annual;
     final choices = plans?.plans ?? const <ProPlan>[];
+    // With a plan picker the offer sits on its plan's tile; a lone plan has
+    // no tile, so its offer leads the subscribe tile instead.
+    final loneIntro = choices.length == 1 ? _introLine(l10n, plans!, plan) : null;
     // Mirrors web's proSellable branch: a purchase CTA only where a perk
     // is live, else the coming-soon teaser. Unknown counts as not sellable.
     // Where the store SDK is unconfigured the purchase would be a web
@@ -414,13 +456,14 @@ class _SettingsProScreenState extends State<SettingsProScreen>
                   title: Text(annual
                       ? l10n.proSubscribeTitleAnnual(priceLabel)
                       : l10n.proSubscribeTitle(priceLabel)),
-                  subtitle: Text(
+                  subtitle: Text([
+                    ?loneIntro,
                     annual
                         ? l10n.proSubscribeSubtitleConfiguredAnnual
                         : rcConfigured
                             ? l10n.proSubscribeSubtitleConfigured
                             : l10n.proSubscribeSubtitleWeb,
-                  ),
+                  ].join('\n')),
                   trailing: Icon(
                     rcConfigured ? Icons.chevron_right : Icons.open_in_new,
                     size: 18,
